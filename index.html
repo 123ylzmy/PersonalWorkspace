@@ -131,7 +131,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 
 .content{
   flex:1;overflow-y:auto;overflow-x:hidden;
-  padding:16px 0 20px;
+  padding:16px 24px 20px;
   scroll-behavior:smooth;-webkit-overflow-scrolling:touch;
   min-height:0;width:100%;
 }
@@ -298,8 +298,8 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 .hd-back-today:hover{background:var(--g100)}
 
 /* 今日页日历+待办左右分栏（PC端） */
-.today-split{display:flex;gap:16px;align-items:stretch;width:100%;max-width:100%}
-.today-cal{flex:0 1 300px;max-width:340px}
+.today-split{display:flex;gap:20px;align-items:stretch;width:100%;max-width:100%}
+.today-cal{flex:0 1 380px;max-width:420px}
 .today-right{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:16px;width:100%}
 .today-right > .card{flex:1;display:flex;flex-direction:column;min-height:0;margin-bottom:0}
 .today-right > .card > .card-bd{flex:1;overflow-y:auto;min-height:0}
@@ -1023,7 +1023,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
 /* ========== 响应式 ========== */
 /* ── 窄桌面 / 平板横屏（≤1100px） ── */
 @media(max-width:1100px){
-  .content{padding:14px 0 18px}
+  .content{padding:14px 20px 18px}
   .today-split{flex-direction:column;align-items:flex-start}
   .today-cal{flex:unset;width:100%;max-width:100%}
   .today-right{gap:12px}
@@ -1037,7 +1037,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
   /* 整体布局 */
   .app{flex-direction:column;min-height:100vh;height:auto}
   .sidebar{display:none}
-  .content{padding:12px 0 calc(90px + var(--safe-b));min-height:0}
+  .content{padding:12px 16px calc(90px + var(--safe-b));min-height:0}
 
   /* 顶部栏 */
   .topbar{height:auto;padding:7px 14px;flex-wrap:wrap;gap:8px}
@@ -1227,7 +1227,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
 
 /* ── 极小屏（≤400px） ── */
 @media(max-width:400px){
-  .content{padding:10px 0 calc(85px + var(--safe-b))}
+  .content{padding:10px 12px calc(85px + var(--safe-b))}
   .card-hd{padding:10px 12px;font-size:13px}
   .card-bd{padding:10px 12px}
   .stat-row{grid-template-columns:repeat(2,1fr);gap:6px}
