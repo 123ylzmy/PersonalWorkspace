@@ -131,7 +131,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 
 .content{
   flex:1;overflow-y:auto;overflow-x:hidden;
-  padding:16px 20px 20px;
+  padding:16px 0 20px;
   scroll-behavior:smooth;-webkit-overflow-scrolling:touch;
   min-height:0;width:100%;
 }
@@ -1023,7 +1023,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
 /* ========== 响应式 ========== */
 /* ── 窄桌面 / 平板横屏（≤1100px） ── */
 @media(max-width:1100px){
-  .content{padding:14px 16px 18px}
+  .content{padding:14px 0 18px}
   .today-split{flex-direction:column;align-items:flex-start}
   .today-cal{flex:unset;width:100%;max-width:100%}
   .today-right{gap:12px}
@@ -1037,7 +1037,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
   /* 整体布局 */
   .app{flex-direction:column;min-height:100vh;height:auto}
   .sidebar{display:none}
-  .content{padding:12px 12px calc(90px + var(--safe-b));min-height:0}
+  .content{padding:12px 0 calc(90px + var(--safe-b));min-height:0}
 
   /* 顶部栏 */
   .topbar{height:auto;padding:7px 14px;flex-wrap:wrap;gap:8px}
@@ -1227,7 +1227,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
 
 /* ── 极小屏（≤400px） ── */
 @media(max-width:400px){
-  .content{padding:10px 8px calc(85px + var(--safe-b))}
+  .content{padding:10px 0 calc(85px + var(--safe-b))}
   .card-hd{padding:10px 12px;font-size:13px}
   .card-bd{padding:10px 12px}
   .stat-row{grid-template-columns:repeat(2,1fr);gap:6px}
