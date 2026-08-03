@@ -1,0 +1,20 @@
+# macOS
+.DS_Store
+
+# Thumbnails
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Backups (keep the main index.html only)
+*_backup.html
+
+# Node
+node_modules/
