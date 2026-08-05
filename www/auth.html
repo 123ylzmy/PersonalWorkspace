@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <meta name="theme-color" content="#7EB89A">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <title>登录 — 樱苓的日常记录</title>
+  <style>
+    :root {
+      --bg: #FAF7F2;
+      --card: #FFFFFF;
+      --accent: #7EB89A;
+      --accent-hover: #6DAB8A;
+      --text: #3D3D3D;
+      --text-secondary: #888888;
+      --line: #EBE5DC;
+      --input-bg: #F5F2EC;
+      --input-border: #E0D9CC;
+      --error: #E06C6C;
+      --radius: 14px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      min-height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    /* 背景装饰 */
+    body::before {
+      content: '';
+      position: fixed;
+      top: -120px; right: -80px;
+      width: 300px; height: 300px;
+      background: radial-gradient(circle, rgba(126,184,154,0.12) 0%, transparent 70%);
+      border-radius: 50%;
+      pointer-events: none;
+    }
+    body::after {
+      content: '';
+      position: fixed;
+      bottom: -100px; left: -60px;
+      width: 250px; height: 250px;
+      background: radial-gradient(circle, rgba(180,160,140,0.10) 0%, transparent 70%);
+      border-radius: 50%;
+      pointer-events: none;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 380px;
+      position: relative;
+      z-index: 1;
+      animation: fadeIn 0.5s ease;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Logo 区 */
+    .logo-area {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+    .logo-icon {
+      width: 64px; height: 64px;
+      border-radius: 18px;
+      background: linear-gradient(135deg, #7EB89A, #5A9A7A);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 34px;
+      color: #fff;
+      margin-bottom: 12px;
+      box-shadow: 0 4px 20px rgba(126,184,154,0.25);
+    }
+    .logo-title {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .logo-sub {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+
+    /* 卡片 */
+    .card {
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: 28px 24px;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.03);
+    }
+
+    /* Tab 切换 */
+    .tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 24px;
+      background: var(--input-bg);
+      border-radius: 10px;
+      padding: 3px;
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 9px 0;
+      border: none;
+      background: transparent;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .tab-btn.active {
+      background: var(--card);
+      color: var(--text);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+
+    /* 表单 */
+    .form { display: none; }
+    .form.active { display: block; }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+    .form-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .form-input {
+      width: 100%;
+      padding: 11px 14px;
+      border: 1.5px solid var(--input-border);
+      border-radius: 10px;
+      background: var(--input-bg);
+      font-size: 15px;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      -webkit-appearance: none;
+    }
+    .form-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(126,184,154,0.10);
+      background: #fff;
+    }
+    .form-input.error {
+      border-color: var(--error);
+    }
+    .form-error {
+      font-size: 12px;
+      color: var(--error);
+      margin-top: 4px;
+      min-height: 16px;
+    }
+
+    /* 记住我 */
+    .remember-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    .remember-row input[type="checkbox"] {
+      accent-color: var(--accent);
+      width: 16px; height: 16px;
+    }
+    .remember-row label {
+      font-size: 13px;
+      color: var(--text-secondary);
+      cursor: pointer;
+    }
+
+    /* 按钮 */
+    .btn-primary {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 10px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-primary:active { transform: scale(0.98); }
+    .btn-primary:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    /* 链接 */
+    .form-link {
+      display: block;
+      text-align: center;
+      margin-top: 14px;
+      font-size: 13px;
+      color: var(--accent);
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .form-link:hover {
+      text-decoration: underline;
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-120px);
+      padding: 12px 24px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 500;
+      color: #fff;
+      z-index: 1000;
+      transition: transform 0.3s ease;
+      pointer-events: none;
+      white-space: nowrap;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+    .toast.success { background: #7EB89A; }
+    .toast.error { background: #E06C6C; }
+
+    /* 忘记密码视图 */
+    .forgot-view { display: none; }
+    .forgot-view.active { display: block; }
+    .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 13px;
+      color: var(--accent);
+      cursor: pointer;
+      margin-bottom: 16px;
+      background: none;
+      border: none;
+      padding: 0;
+    }
+    .back-btn:hover { text-decoration: underline; }
+
+    /* Loading spinner */
+    .spinner {
+      display: inline-block;
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* 底部 */
+    .footer {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 11px;
+      color: var(--text-secondary);
+      opacity: 0.7;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <!-- Logo -->
+  <div class="logo-area">
+    <div class="logo-icon">樱</div>
+    <div class="logo-title">樱苓的日常记录</div>
+    <div class="logo-sub">个人数字工作台</div>
+  </div>
+
+  <!-- 卡片 -->
+  <div class="card">
+    <!-- Tab -->
+    <div class="tabs" id="tabs">
+      <button class="tab-btn active" data-tab="login">登录</button>
+      <button class="tab-btn" data-tab="register">注册</button>
+    </div>
+
+    <!-- 登录表单 -->
+    <form class="form active" id="loginForm" autocomplete="on">
+      <div class="form-group">
+        <label class="form-label" for="loginEmail">邮箱</label>
+        <input type="email" class="form-input" id="loginEmail" placeholder="your@email.com" autocomplete="email" required>
+        <div class="form-error" id="loginEmailError"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="loginPassword">密码</label>
+        <input type="password" class="form-input" id="loginPassword" placeholder="输入密码" autocomplete="current-password" required>
+        <div class="form-error" id="loginPasswordError"></div>
+      </div>
+      <div class="remember-row">
+        <input type="checkbox" id="rememberMe" checked>
+        <label for="rememberMe">记住登录状态</label>
+      </div>
+      <button type="submit" class="btn-primary" id="loginBtn">登录</button>
+      <span class="form-link" id="showForgot">忘记密码？</span>
+    </form>
+
+    <!-- 注册表单 -->
+    <form class="form" id="registerForm" autocomplete="on">
+      <div class="form-group">
+        <label class="form-label" for="regEmail">邮箱</label>
+        <input type="email" class="form-input" id="regEmail" placeholder="your@email.com" autocomplete="email" required>
+        <div class="form-error" id="regEmailError"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="regPassword">密码（至少6位）</label>
+        <input type="password" class="form-input" id="regPassword" placeholder="至少6位密码" autocomplete="new-password" required minlength="6">
+        <div class="form-error" id="regPasswordError"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="regConfirm">确认密码</label>
+        <input type="password" class="form-input" id="regConfirm" placeholder="再次输入密码" autocomplete="new-password" required>
+        <div class="form-error" id="regConfirmError"></div>
+      </div>
+      <button type="submit" class="btn-primary" id="regBtn">注册</button>
+      <span class="form-link" id="switchToLogin">已有账号？去登录</span>
+    </form>
+
+    <!-- 忘记密码视图 -->
+    <div class="forgot-view" id="forgotView">
+      <button class="back-btn" id="backToLogin">← 返回登录</button>
+      <div class="form-group">
+        <label class="form-label" for="forgotEmail">注册邮箱</label>
+        <input type="email" class="form-input" id="forgotEmail" placeholder="your@email.com" required>
+        <div class="form-error" id="forgotEmailError"></div>
+      </div>
+      <button class="btn-primary" id="resetBtn">发送重置链接</button>
+      <p style="font-size:12px;color:var(--text-secondary);margin-top:12px;text-align:center">
+        我们将向你的邮箱发送密码重置链接，请查收邮件。
+      </p>
+    </div>
+  </div>
+
+  <div class="footer">v2026.08.05 — PWA 可安装版</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Supabase SDK -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+<script>
+// ==================== Supabase 初始化 ====================
+var SUPABASE_URL = 'https://dyvzxlntyqebblewpihj.supabase.co';
+var SUPABASE_KEY = 'sb_publishable_kSGB8khWFcMSemqJ1m6Rxw_pI4gGrhc';
+
+var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// ==================== UI 工具 ====================
+function $(id) { return document.getElementById(id); }
+
+function showToast(msg, type) {
+  var t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + type + ' show';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(function() { t.classList.remove('show'); }, 3000);
+}
+
+function setLoading(btn, loading) {
+  if (loading) {
+    btn.disabled = true;
+    btn._origText = btn.textContent;
+    btn.innerHTML = '<span class="spinner"></span>' + btn._origText;
+  } else {
+    btn.disabled = false;
+    btn.innerHTML = btn._origText;
+  }
+}
+
+// ==================== Tab 切换 ====================
+var tabs = $('tabs');
+var forms = document.querySelectorAll('.form');
+var forgotView = $('forgotView');
+
+tabs.addEventListener('click', function(e) {
+  if (!e.target.classList.contains('tab-btn')) return;
+  var tab = e.target.dataset.tab;
+  tabs.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+  e.target.classList.add('active');
+  forms.forEach(function(f) { f.classList.remove('active'); });
+  forgotView.classList.remove('active');
+  if (tab === 'login') $('loginForm').classList.add('active');
+  else $('registerForm').classList.add('active');
+});
+
+$('switchToLogin').addEventListener('click', function() {
+  tabs.querySelector('[data-tab="login"]').click();
+});
+
+$('showForgot').addEventListener('click', function() {
+  forms.forEach(function(f) { f.classList.remove('active'); });
+  forgotView.classList.add('active');
+});
+
+$('backToLogin').addEventListener('click', function() {
+  forgotView.classList.remove('active');
+  $('loginForm').classList.add('active');
+});
+
+// ==================== 登录 ====================
+$('loginForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  var email = $('loginEmail').value.trim();
+  var password = $('loginPassword').value;
+  var valid = true;
+
+  $('loginEmailError').textContent = '';
+  $('loginPasswordError').textContent = '';
+  $('loginEmail').classList.remove('error');
+  $('loginPassword').classList.remove('error');
+
+  if (!email) { $('loginEmailError').textContent = '请输入邮箱'; $('loginEmail').classList.add('error'); valid = false; }
+  if (!password) { $('loginPasswordError').textContent = '请输入密码'; $('loginPassword').classList.add('error'); valid = false; }
+  if (!valid) return;
+
+  setLoading($('loginBtn'), true);
+  supabase.auth.signInWithPassword({ email: email, password: password })
+    .then(function(res) {
+      setLoading($('loginBtn'), false);
+      if (res.error) {
+        var msg = res.error.message;
+        if (msg.includes('Invalid login')) msg = '邮箱或密码错误';
+        if (msg.includes('Email not confirmed')) msg = '邮箱未验证，请检查邮件';
+        showToast(msg, 'error');
+        return;
+      }
+      // 保存 session
+      var storage = $('rememberMe').checked ? localStorage : sessionStorage;
+      storage.setItem('sb_session', JSON.stringify(res.data.session));
+      showToast('登录成功，即将跳转…', 'success');
+      setTimeout(function() { window.location.href = 'index.html'; }, 800);
+    }).catch(function(err) {
+      setLoading($('loginBtn'), false);
+      showToast('网络错误，请重试', 'error');
+    });
+});
+
+// ==================== 注册 ====================
+$('registerForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  var email = $('regEmail').value.trim();
+  var password = $('regPassword').value;
+  var confirm = $('regConfirm').value;
+  var valid = true;
+
+  ['regEmail', 'regPassword', 'regConfirm'].forEach(function(id) {
+    $(id + 'Error').textContent = '';
+    $(id).classList.remove('error');
+  });
+
+  if (!email) { $('regEmailError').textContent = '请输入邮箱'; $('regEmail').classList.add('error'); valid = false; }
+  if (password.length < 6) { $('regPasswordError').textContent = '密码至少6位'; $('regPassword').classList.add('error'); valid = false; }
+  if (password !== confirm) { $('regConfirmError').textContent = '两次密码不一致'; $('regConfirm').classList.add('error'); valid = false; }
+  if (!valid) return;
+
+  setLoading($('regBtn'), true);
+  supabase.auth.signUp({ email: email, password: password })
+    .then(function(res) {
+      setLoading($('regBtn'), false);
+      if (res.error) {
+        var msg = res.error.message;
+        if (msg.includes('already registered')) msg = '该邮箱已注册，请直接登录';
+        showToast(msg, 'error');
+        return;
+      }
+      if (res.data.user && !res.data.session) {
+        showToast('注册成功！请查看邮箱验证后登录', 'success');
+      } else {
+        showToast('注册成功！', 'success');
+        var storage = $('rememberMe').checked ? localStorage : sessionStorage;
+        storage.setItem('sb_session', JSON.stringify(res.data.session));
+        setTimeout(function() { window.location.href = 'index.html'; }, 800);
+      }
+    }).catch(function(err) {
+      setLoading($('regBtn'), false);
+      showToast('网络错误，请重试', 'error');
+    });
+});
+
+// ==================== 忘记密码 ====================
+$('resetBtn').addEventListener('click', function(e) {
+  var email = $('forgotEmail').value.trim();
+  $('forgotEmailError').textContent = '';
+  $('forgotEmail').classList.remove('error');
+
+  if (!email) {
+    $('forgotEmailError').textContent = '请输入注册邮箱';
+    $('forgotEmail').classList.add('error');
+    return;
+  }
+
+  setLoading($('resetBtn'), true);
+  supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin + '/auth.html#reset'
+  }).then(function(res) {
+    setLoading($('resetBtn'), false);
+    if (res.error) {
+      showToast(res.error.message, 'error');
+      return;
+    }
+    showToast('重置链接已发送，请查收邮件', 'success');
+    setTimeout(function() { $('backToLogin').click(); }, 2000);
+  }).catch(function(err) {
+    setLoading($('resetBtn'), false);
+    showToast('网络错误，请重试', 'error');
+  });
+});
+
+// ==================== 自动检查登录态 ====================
+(function() {
+  var session = localStorage.getItem('sb_session') || sessionStorage.getItem('sb_session');
+  if (session) {
+    try {
+      var parsed = JSON.parse(session);
+      if (parsed && parsed.access_token) {
+        // 已登录，跳转到主页
+        window.location.href = 'index.html';
+        return;
+      }
+    } catch(e) {}
+  }
+
+  // 处理 Supabase 回调（邮箱验证、密码重置等）
+  var hash = window.location.hash;
+  if (hash) {
+    var params = new URLSearchParams(hash.substring(1));
+    if (params.get('type') === 'signup') {
+      showToast('邮箱验证成功，请登录', 'success');
+    } else if (params.get('type') === 'recovery') {
+      showToast('请在下方设置新密码', 'success');
+    }
+    window.location.hash = '';
+  }
+})();
+</script>
+
+</body>
+</html>

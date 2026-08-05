@@ -1,0 +1,17 @@
+{
+  "name": "yingling-workbench",
+  "version": "1.0.0",
+  "description": "樱苓的工作台 Android App",
+  "scripts": {
+    "build:web": "node scripts/copy-web.js",
+    "sync": "npx cap sync",
+    "open:android": "npx cap open android",
+    "build:apk": "npx cap sync android && cd android && ./gradlew assembleDebug"
+  },
+  "dependencies": {
+    "@capacitor/core": "^6.1.0",
+    "@capacitor/android": "^6.1.0",
+    "@capacitor/cli": "^6.1.0"
+  },
+  "devDependencies": {}
+}
