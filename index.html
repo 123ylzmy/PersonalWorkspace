@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-<!-- saved from url=(0094)file:///D:/PersonalWorkspace/%E6%A8%B1%E8%8B%93%E7%9A%84%E5%B7%A5%E4%BD%9C%E5%8F%B0/index.html -->
 <html lang="zh-CN" data-theme="light" data-font="m" data-accent="green">
 
 <head>
@@ -11,11 +10,13 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="樱苓工作台">
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <meta http-equiv="Pragma" content="no-cache">
-  <meta http-equiv="Expires" content="0">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="theme-color" content="#FAF7F2">
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="manifest.json">
+  <!-- iOS 主屏图标 -->
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" sizes="512x512" href="icons/icon-512.png">
+  <!-- 主题色（Android 状态栏 + PWA 标题栏） -->
+  <meta name="theme-color" content="#7EB89A">
   <title>樱苓的日常记录</title>
   <link rel="stylesheet" href="index.css">
 </head>
@@ -212,6 +213,14 @@
               <path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z"></path>
             </svg>
             <span class="cloud-label">云同步</span>
+          </button>
+          <button class="topbar-btn" id="logoutBtn" onclick="handleLogout()" title="退出登录" style="color:var(--danger);margin-left:4px">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+              <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"></path>
+              <polyline points="16 17 21 12 16 7"></polyline>
+              <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+            <span class="cloud-label">退出</span>
           </button>
         </div>
       </header>
@@ -1218,10 +1227,99 @@
   </div>
 
 
-<div style="text-align:center;padding:6px 0 12px;font-size:10px;color:var(--g200);font-family:system-ui">v2026.08.03.10 — 数据分离至 data.json</div>
+<div style="text-align:center;padding:6px 0 12px;font-size:10px;color:var(--g200);font-family:system-ui">v2026.08.05 — PWA 可安装版 · Android/iOS 支持</div>
 
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+/* ===== 认证守卫 ===== */
+(function() {
+  var SUPABASE_URL = "https://dyvzxlntyqebblewpihj.supabase.co";
+  var SUPABASE_KEY = "sb_publishable_kSGB8khWFcMSemqJ1m6Rxw_pI4gGrhc";
+
+  // 获取存储的 session
+  var sessionData = localStorage.getItem("sb_session") || sessionStorage.getItem("sb_session");
+  if (!sessionData) {
+    window.location.replace("auth.html");
+    return;
+  }
+
+  try {
+    var session = JSON.parse(sessionData);
+
+    // 检查是否过期
+    if (session.expires_at && session.expires_at < Date.now() / 1000) {
+      // 尝试用 refresh_token 刷新
+      fetch(SUPABASE_URL + "/auth/v1/token?grant_type=refresh_token", {
+        method: "POST",
+        headers: { "apikey": SUPABASE_KEY, "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: session.refresh_token })
+      }).then(function(res) { return res.json(); })
+        .then(function(data) {
+          if (data.access_token) {
+            var newSession = {
+              access_token: data.access_token,
+              refresh_token: data.refresh_token,
+              expires_at: Math.floor(Date.now() / 1000) + data.expires_in,
+              user: session.user
+            };
+            // 更新存储
+            if (localStorage.getItem("sb_session")) {
+              localStorage.setItem("sb_session", JSON.stringify(newSession));
+            } else {
+              sessionStorage.setItem("sb_session", JSON.stringify(newSession));
+            }
+            // 暴露到全局
+            window.__auth = newSession;
+          } else {
+            localStorage.removeItem("sb_session");
+            sessionStorage.removeItem("sb_session");
+            window.location.replace("auth.html");
+          }
+        }).catch(function() {
+          window.location.replace("auth.html");
+        });
+    } else {
+      window.__auth = session;
+    }
+  } catch(e) {
+    localStorage.removeItem("sb_session");
+    sessionStorage.removeItem("sb_session");
+    window.location.replace("auth.html");
+  }
+})();
+</script>
 <script src="index.js"></script>
+
+<!-- PWA: 注册 Service Worker（离线缓存 + 可安装） -->
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js', { scope: '/' })
+    .then(function(reg) {
+      console.log('[PWA] Service Worker 已注册', reg.scope);
+    })
+    .catch(function(err) {
+      console.warn('[PWA] Service Worker 注册失败:', err);
+    });
+}
+
+// 安卓安装提示
+var _deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', function(e) {
+  e.preventDefault();
+  _deferredPrompt = e;
+  setTimeout(function() {
+    if (_deferredPrompt && !window.matchMedia('(display-mode: standalone)').matches) {
+      _deferredPrompt.prompt();
+      _deferredPrompt.userChoice.then(function() { _deferredPrompt = null; });
+    }
+  }, 5000);
+});
+window.addEventListener('appinstalled', function() {
+  _deferredPrompt = null;
+  console.log('[PWA] 应用已安装');
+});
+</script>
 
 
 </body>

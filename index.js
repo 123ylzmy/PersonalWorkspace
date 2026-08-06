@@ -1,19 +1,64 @@
-/* ===================== 云同步（同步码模式 · fetch 直连，零 CDN 依赖）==================== */
+/* ===================== 认证 ===================== */
+  // 解析 sync_store 返回的 data 字段（兼容 JSONB 对象和 TEXT 字符串）
+  function parseStoreData(d) {
+    if (!d) return null;
+    if (typeof d === 'string') {
+      try { d = JSON.parse(d); } catch(e) { return d; }
+    }
+    return d;
+  }
+
+  function getUserProfile() {
+    return window.__profile || { nickname: '用户', avatar_idx: 0, gender: '' };
+  }
+
+  function getAvatarHtml(profile, size) {
+    size = size || 28;
+    // 自定义上传头像优先
+    if (profile && profile.avatar_url) {
+      return '<span style="display:inline-flex;align-items:center;justify-content:center;width:' + size + 'px;height:' + size + 'px;border-radius:50%;overflow:hidden;flex-shrink:0;position:relative"><img src="' + profile.avatar_url + '" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;object-position:center center;display:block" alt="头像"></span>';
+    }
+    var ai = (profile && profile.avatar_idx !== undefined) ? profile.avatar_idx : 0;
+    var emoji = (profile && profile.avatar_emoji) || AVATAR_PRESETS[ai] || '🌸';
+    var bg = (profile && profile.avatar_bg) || '#FFE4E1';
+    return '<span style="display:inline-flex;align-items:center;justify-content:center;width:' + size + 'px;height:' + size + 'px;border-radius:50%;background:' + bg + ';font-size:' + Math.round(size*0.55) + 'px;flex-shrink:0">' + emoji + '</span>';
+  }
+
+  // 预设头像（与 auth.html 保持一致）
+  var AVATAR_PRESETS = ['🌸','🌿','☀️','🌙','⭐','🦋'];
+
+  // 性别判断：只有女性才显示经期记录
+  function isFemaleUser() {
+    var profile = getUserProfile();
+    return profile && profile.gender === 'female';
+  }
+
+  function handleLogout() {
+    localStorage.removeItem("wb_auth_data");
+    localStorage.removeItem("sb_session");
+    sessionStorage.removeItem("sb_session");
+    window.location.replace("auth.html");
+  }
+
+  /* ===================== 云同步（自动按用户隔离 · fetch 直连 Supabase REST API）==================== */
   let syncConnected = false;
   let syncTimer = null;
   let lastSyncedAt = null;
-  let lastLocalUpdate = Date.now();  // 本地最新修改时间戳，用于双向同步比较
-  let syncConfig = null; // { url, key, code }
-  const SYNC_CONFIG_KEY = 'wb_yingling_sync_config';
+  let lastLocalUpdate = Date.now();
+  let syncConfig = null; // { url, key, userId }
 
-  /* ---- fetch 封装：直连 Supabase REST API ---- */
+  function getUserId() {
+    var auth = window.__auth;
+    return auth && auth.user ? auth.user.id : null;
+  }
+
+  /* ---- fetch 封装 ---- */
   function sbFetch(config, method, path, body, extraHeaders) {
     var headers = {
       'apikey': config.key,
       'Authorization': 'Bearer ' + config.key,
       'Content-Type': 'application/json'
     };
-    // 支持额外 header（如 Prefer: resolution=merge-duplicates）
     if (extraHeaders) {
       var parts = extraHeaders.split(': ');
       if (parts.length === 2) headers[parts[0]] = parts[1];
@@ -27,50 +72,21 @@
     });
   }
 
-  /* ---- 配置读写 ---- */
-  function loadSyncConfig() {
-    try { var r = localStorage.getItem(SYNC_CONFIG_KEY); if (r) syncConfig = JSON.parse(r); } catch (e) { syncConfig = null; }
-  }
-
-  function saveSyncConfig() {
-    var url = document.getElementById('syncUrl').value.trim();
-    var key = document.getElementById('syncKey').value.trim();
-    var code = document.getElementById('syncCode').value.trim();
-    var errEl = document.getElementById('authError');
-    errEl.textContent = '';
-    if (!url || !key || !code) { errEl.textContent = '请填写完整的同步配置'; return; }
-    if (!url.startsWith('https://') || !url.includes('.supabase.co')) { errEl.textContent = '项目 URL 格式不正确'; return; }
-    syncConfig = { url: url, key: key, code: code };
-    localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(syncConfig));
-    // 保存后立即测试连接
-    errEl.style.color = 'var(--warning)';
-    errEl.textContent = '正在验证连接...';
-    doTestConnection().then(function(ok) {
-      syncConnected = ok;
-      updateSyncUI(ok);
-      if (ok) {
-        errEl.style.color = 'var(--success)';
-        errEl.textContent = '✅ 连接成功！配置已保存';
-        setTimeout(function() { errEl.style.color = ''; errEl.textContent = ''; closeAuth(); }, 1000);
-        // 首次上传（只推不拉，避免云端旧数据覆盖本地）
-        doUpload();
-        startAutoSync();
-      } else {
-        errEl.style.color = '';
-        errEl.textContent = '配置已保存但连接失败，请检查后重试';
-      }
-    });
-  }
-
-  function doTestConnection() {
-    return sbFetch(syncConfig, 'GET', 'sync_store?select=count', null)
-      .then(function() { return true; })
-      .catch(function() { return false; });
+  /* ---- 自动初始化同步配置（使用用户ID隔离数据）---- */
+  function initSyncConfig() {
+    var uid = getUserId();
+    if (!uid) return;
+    syncConfig = {
+      url: 'https://dyvzxlntyqebblewpihj.supabase.co',
+      key: 'sb_publishable_kSGB8khWFcMSemqJ1m6Rxw_pI4gGrhc',
+      userId: uid
+    };
   }
 
   function doUpload() {
+    if (!syncConfig) return Promise.resolve();
     return sbFetch(syncConfig, 'POST', 'sync_store', {
-      group_key: syncConfig.code,
+      group_key: syncConfig.userId,
       store: 'wb_yingling_v2',
       data: state,
       updated_at: new Date().toISOString()
@@ -78,13 +94,18 @@
   }
 
   function downloadAndMerge() {
-    return sbFetch(syncConfig, 'GET', 'sync_store?group_key=eq.' + encodeURIComponent(syncConfig.code) + '&store=eq.wb_yingling_v2&select=data,updated_at&limit=1', null)
+    if (!syncConfig) return Promise.resolve();
+    return sbFetch(syncConfig, 'GET', 'sync_store?group_key=eq.' + encodeURIComponent(syncConfig.userId) + '&store=eq.wb_yingling_v2&select=data,updated_at&limit=1', null)
       .then(function(arr) {
         if (arr && arr.length > 0 && arr[0].data) {
-          var merged = mergeStateData(state, arr[0].data);
+          var rawData = parseStoreData(arr[0].data);
+          if (!rawData) return;
+          var merged = mergeStateData(state, rawData);
           if (JSON.stringify(merged) !== JSON.stringify(state)) {
             state = merged; save(); renderAll();
-            toast('已从云端同步最新数据 📥');
+            if (rawData && JSON.stringify(rawData).length > 10) {
+              toast('已从云端同步数据 📥');
+            }
           }
         }
         lastSyncedAt = Date.now();
@@ -94,132 +115,37 @@
 
   /* ---- UI 状态 ---- */
   function updateSyncUI(connected) {
-    var label = document.getElementById('syncLabel');
     var btn = document.getElementById('cloudBtn');
-    var btnLabel = btn.querySelector('.cloud-label');
     var dot = document.getElementById('syncDot');
     if (connected) {
-      label.textContent = '已连接';
-      btnLabel.textContent = '已同步';
-      btn.style.background = 'var(--g100)';
-      btn.style.color = 'var(--g500)';
-      btn.style.borderColor = 'var(--g300)';
-      dot.style.background = 'var(--success)';
+      if (btn) { btn.style.background = 'var(--g100)'; btn.style.color = 'var(--g500)'; btn.style.borderColor = 'var(--g300)'; btn.title = '已同步 · 点击手动同步'; }
+      if (dot) dot.style.background = 'var(--success)';
     } else {
-      label.textContent = '未配置';
-      btnLabel.textContent = '云同步';
-      btn.style.background = 'var(--g50)';
-      btn.style.color = 'var(--g400)';
-      btn.style.borderColor = 'var(--g200)';
-      dot.style.background = 'var(--g200)';
+      if (btn) { btn.style.background = 'var(--g50)'; btn.style.color = 'var(--g400)'; btn.style.borderColor = 'var(--g200)'; btn.title = '离线 · 点击同步'; }
+      if (dot) dot.style.background = 'var(--g200)';
     }
   }
 
-  function toggleCloudPanel() { openAuth(); }
-
-  function openAuth() {
-    loadSyncConfig();
-    var overlay = document.getElementById('authOverlay');
-    if (!overlay) return;
-    overlay.style.display = 'flex';
-    if (syncConfig) {
-      document.getElementById('syncUrl').value = syncConfig.url || '';
-      document.getElementById('syncKey').value = syncConfig.key || '';
-      document.getElementById('syncCode').value = syncConfig.code || '';
-    }
-    var errEl = document.getElementById('authError');
-    if (errEl) errEl.textContent = '';
-    var statusRow = document.getElementById('syncStatusRow');
-    if (statusRow) {
-      statusRow.style.display = 'block';
-      statusRow.textContent = syncConfig ? '当前：已配置（同步码：' + syncConfig.code + '）' : '当前：未配置';
-    }
-  }
-
-  function closeAuth() { document.getElementById('authOverlay').style.display = 'none'; }
-
-  /* ---- 连接测试 ---- */
-  async function testSyncConnection() {
-    var errEl = document.getElementById('authError');
-    var url = document.getElementById('syncUrl').value.trim();
-    var key = document.getElementById('syncKey').value.trim();
-    errEl.textContent = '';
-    if (!url || !key) { errEl.textContent = '请填写项目 URL 和 Anon Key'; return; }
-    var cfg = { url: url, key: key, code: 'test' };
-    try {
-      await sbFetch(cfg, 'GET', 'sync_store?select=count', null);
-      errEl.style.color = 'var(--success)';
-      errEl.textContent = '✅ 连接成功！数据库可访问';
-      setTimeout(function() { errEl.style.color = ''; errEl.textContent = ''; }, 3000);
-    } catch (e) {
-      errEl.textContent = '连接失败：' + (e.message || '请检查配置是否正确');
-    }
-  }
-
-  /* ---- 设置面板：上传 / 从云端加载 ---- */
-  async function syncNowFromSettings(mode) {
-    var errEl = document.getElementById('authError');
-    var url = document.getElementById('syncUrl').value.trim();
-    var key = document.getElementById('syncKey').value.trim();
-    var code = document.getElementById('syncCode').value.trim();
-    errEl.textContent = '';
-    if (!url || !key || !code) { errEl.textContent = '请填写完整的同步配置'; return; }
-    var cfg = syncConfig || { url: url, key: key, code: code };
-    errEl.style.color = 'var(--warning)';
-
-    if (mode === 'download') {
-      // 从云端下载
-      errEl.textContent = '正在从云端加载...';
-      try {
-        var arr = await sbFetch(cfg, 'GET', 'sync_store?group_key=eq.' + encodeURIComponent(code) + '&store=eq.wb_yingling_v2&select=data,updated_at&limit=1', null);
-        if (arr && arr.length > 0 && arr[0].data) {
-          var merged = mergeStateData(state, arr[0].data);
-          if (JSON.stringify(merged) !== JSON.stringify(state)) {
-            state = merged; save(); renderAll();
-            errEl.style.color = 'var(--success)';
-            errEl.textContent = '✅ 已从云端加载最新数据';
-          } else {
-            errEl.style.color = 'var(--success)';
-            errEl.textContent = '✅ 数据一致，无需更新';
-          }
-        } else {
-          errEl.textContent = '云端暂无数据，请先在另一台设备上传';
-        }
-        lastSyncedAt = Date.now();
-      } catch (e) {
-        errEl.style.color = '';
-        errEl.textContent = '加载失败：' + (e.message || '请检查网络和配置');
+  function toggleCloudPanel() {
+    if (!syncConnected) {
+      // 手动触发同步
+      if (syncConfig) {
+        doUpload().then(function() {
+          lastSyncedAt = Date.now();
+          toast('数据已同步 ✅');
+        }).catch(function() {
+          toast('同步失败，请检查网络', 'error');
+        });
       }
-    } else {
-      // 上传到云端
-      errEl.textContent = '正在上传...';
-      try {
-        var upBody = { group_key: code, store: 'wb_yingling_v2', data: state, updated_at: new Date().toISOString() };
-        await sbFetch(cfg, 'POST', 'sync_store', upBody, 'Prefer: resolution=merge-duplicates');
-        lastSyncedAt = Date.now();
-        errEl.style.color = 'var(--success)';
-        errEl.textContent = '✅ 已上传到云端';
-      } catch (e) {
-        errEl.style.color = '';
-        errEl.textContent = '上传失败：' + (e.message || '请检查网络和配置');
-      }
+      return;
     }
-    setTimeout(function() { errEl.style.color = ''; errEl.textContent = ''; }, 3000);
-  }
-
-  /* ---- 顶部按钮手动同步：只上传（本地数据最权威，不会被云端覆盖）---- */
-  async function syncNow() {
-    if (!syncConfig || !syncConnected) { toast('请先配置并连接云同步'); openAuth(); return; }
-    try {
-      var btn = document.getElementById('cloudBtn');
-      var btnLabel = btn.querySelector('.cloud-label');
-      btnLabel.textContent = '同步中';
-      var upBody = { group_key: syncConfig.code, store: 'wb_yingling_v2', data: state, updated_at: new Date().toISOString() };
-      await sbFetch(syncConfig, 'POST', 'sync_store', upBody, 'Prefer: resolution=merge-duplicates');
+    // 已连接，手动上传
+    doUpload().then(function() {
       lastSyncedAt = Date.now();
-      btnLabel.textContent = '已同步';
-      toast('数据已上传云端 ✅');
-    } catch (e) { toast('同步失败：' + (e.message || '请检查网络')); }
+      toast('数据已同步 ✅');
+    }).catch(function() {
+      toast('同步失败', 'error');
+    });
   }
 
   /* ---- 数据合并 ---- */
@@ -279,7 +205,7 @@
     try {
       // 1) 查询云端最新时间戳
       var arr = await sbFetch(syncConfig, 'GET',
-        'sync_store?group_key=eq.' + encodeURIComponent(syncConfig.code) +
+        'sync_store?group_key=eq.' + encodeURIComponent(syncConfig.userId) +
         '&store=eq.wb_yingling_v2&select=updated_at&limit=1', null);
 
       var cloudTime = 0;
@@ -290,7 +216,7 @@
       // 2) 如果云端比本地新 → 下载合并（另一台设备改过数据）
       if (cloudTime > lastLocalUpdate && cloudTime > (lastSyncedAt || 0)) {
         var full = await sbFetch(syncConfig, 'GET',
-          'sync_store?group_key=eq.' + encodeURIComponent(syncConfig.code) +
+          'sync_store?group_key=eq.' + encodeURIComponent(syncConfig.userId) +
           '&store=eq.wb_yingling_v2&select=data,updated_at&limit=1', null);
         if (full && full.length > 0 && full[0].data) {
           // 用时间戳判断云端是否真的更新了
@@ -313,7 +239,7 @@
       }
       // 3) 如果本地比云端新 → 上传（本设备刚改过数据）
       else if (lastLocalUpdate > cloudTime && lastLocalUpdate > (lastSyncedAt || 0)) {
-        var upBody = { group_key: syncConfig.code, store: 'wb_yingling_v2', data: state, updated_at: new Date().toISOString() };
+        var upBody = { group_key: syncConfig.userId, store: 'wb_yingling_v2', data: state, updated_at: new Date().toISOString() };
         await sbFetch(syncConfig, 'POST', 'sync_store', upBody, 'Prefer: resolution=merge-duplicates');
         lastSyncedAt = Date.now();
       }
@@ -322,19 +248,75 @@
     }
   }
 
-  // 页面加载时恢复同步状态，启动实时双向同步
-  loadSyncConfig();
-  if (syncConfig) {
-    doTestConnection().then(function(ok) {
-      syncConnected = ok;
-      updateSyncUI(ok);
-      if (ok) {
+  // 页面加载时自动初始化同步（基于登录用户）
+  initSyncConfig();
+  if (syncConfig && syncConfig.userId) {
+    // 从云端加载 profile（可能在其他设备修改过）
+    sbFetch(syncConfig, 'GET', 'sync_store?group_key=eq.' + encodeURIComponent('profile_' + syncConfig.userId) + '&store=eq.wb_user_profile&select=data&limit=1', null)
+      .then(function(arr) {
+        if (arr && arr.length > 0 && arr[0].data) {
+          var cloudProfile = parseStoreData(arr[0].data);
+          // 合并到本地 profile
+          var authData = localStorage.getItem('wb_auth_data');
+          if (authData) {
+            try {
+              var parsed = JSON.parse(authData);
+              parsed.profile = Object.assign({}, parsed.profile || {}, cloudProfile);
+              window.__profile = parsed.profile;
+              localStorage.setItem('wb_auth_data', JSON.stringify(parsed));
+            } catch(e) {}
+          }
+        }
+        // 不管有没有更新，都刷新 header
+        if (typeof renderHead === 'function') renderHead();
+      })
+      .catch(function() { /* 网络不可用，使用本地数据 */ });
+
+    // 快速测试连接并启动同步
+    sbFetch(syncConfig, 'GET', 'sync_store?group_key=eq.' + encodeURIComponent(syncConfig.userId) + '&store=eq.wb_yingling_v2&select=updated_at&limit=1', null)
+      .then(function() {
+        syncConnected = true;
+        updateSyncUI(true);
         startAutoSync();
-        // 首次立即检查一次（不等 3 秒），双向同步
-        pollSync();
-      }
-    });
+        // 首次拉取云端数据
+        downloadAndMerge();
+      })
+      .catch(function() {
+        syncConnected = false;
+        updateSyncUI(false);
+        // 即使连接失败也不影响本地使用
+      });
   }
+
+  /* ---- 网络状态监听：断网暂停、恢复后自动同步 ---- */
+  var _wasOffline = false;
+  window.addEventListener('online', function() {
+    if (_wasOffline && syncConfig) {
+      _wasOffline = false;
+      doTestConnection().then(function(ok) {
+        syncConnected = ok;
+        updateSyncUI(ok);
+        if (ok) {
+          startAutoSync();
+          pollSync();
+          toast('网络已恢复，正在同步... 🔄');
+        }
+      });
+    }
+  });
+  window.addEventListener('offline', function() {
+    _wasOffline = true;
+    syncConnected = false;
+    updateSyncUI(false);
+    stopAutoSync();
+  });
+
+  /* ---- 页面可见性监听：切回前台时自动拉取最新数据 ---- */
+  document.addEventListener('visibilitychange', function() {
+    if (!document.hidden && syncConfig && syncConnected) {
+      pollSync();
+    }
+  });
 
   /* ===================== 数据层 ===================== */
   const STORE_KEY = 'wb_yingling_v2';
@@ -380,6 +362,57 @@
     });
   }
 
+  /* ===================== 每日心灵语录 ===================== */
+  const SOUL_QUOTES = [
+    "你比你相信的更勇敢，比你看起来更强大，比你想象的更聪明。",
+    "每一个不曾起舞的日子，都是对生命的辜负。",
+    "慢慢来，比较快。",
+    "你不需要完美，你只需要完整。",
+    "今天的不开心就止于此吧，明天依旧光芒万丈。",
+    "允许一切发生，然后记得做一个勇敢的人。",
+    "生活不是等待暴风雨过去，而是学会在雨中跳舞。",
+    "你是自己的太阳，无需借谁的光。",
+    "每一次呼吸都是新的开始。",
+    "温柔要有，但不是妥协。",
+    "保持心脏震荡，有人等你共鸣。",
+    "万物皆有裂痕，那是光照进来的地方。",
+    "你已经做得很好了，真的。",
+    "做你自己，因为别人都有人做了。",
+    "世界喧嚣，你做你自己就好。",
+    "不必行色匆匆，不必光芒四射，不必成为别人。",
+    "心若向阳，无畏悲伤。",
+    "当下的每一刻，都是你生命中最年轻的时刻。",
+    "相信自己，你值得拥有最好的。",
+    "日子很长，过客很多，也不必太在意。"
+  ];
+  function getDailyQuote() {
+    var d = new Date();
+    var seed = d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+    return SOUL_QUOTES[seed % SOUL_QUOTES.length];
+  }
+  function getRandomQuote() {
+    return SOUL_QUOTES[Math.floor(Math.random() * SOUL_QUOTES.length)];
+  }
+  function renderSoulQuote() {
+    var el = document.getElementById('soulQuote');
+    if (!el) return;
+    var saved = state._soulQuote;
+    var todayStr = today();
+    if (!saved || saved.date !== todayStr) {
+      saved = { date: todayStr, text: getDailyQuote() };
+      state._soulQuote = saved;
+      save();
+    }
+    el.textContent = saved.text;
+  }
+  function refreshSoulQuote() {
+    var q = getRandomQuote();
+    state._soulQuote = { date: today(), text: q };
+    save();
+    renderSoulQuote();
+    toast('已更换语录 ✨');
+  }
+
   let HABITS = [];      // 从 data.json 加载
   let CATEGORIES = [];  // 从 data.json 加载
 
@@ -404,7 +437,7 @@
         if (!d.periods) d.periods = [];
         if (!d.studyModules) d.studyModules = defData.studyModules;
         if (!d.holidays) d.holidays = [];
-        if (!d.healthTarget) d.healthTarget = { weight: 55 };
+        if (!d.healthTarget) d.healthTarget = null;
         // 迁移旧工作任务：补 deadline + completedDate + progress + stages
         if (d.workTasks) d.workTasks.forEach(t => {
           if (!t.deadline) t.deadline = today();
@@ -472,33 +505,57 @@
   let state = null; // 异步加载 data.json 后初始化
   let todoViewDate = null; // 在 initApp 中赋值
   let calYear, calMonth;
+  let _showLunar = false;
   function save() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); lastLocalUpdate = Date.now(); autoCloudSave() }
-  /* 自动云端保存（防抖：本地数据变更 2 秒后自动上传） */
+  /* 自动云端保存（防抖 1.5 秒，失败自动重试最多 3 次） */
   var _cloudSavePending = null;
+  var _cloudSaveRetries = 0;
   function autoCloudSave() {
     if (!syncConfig || !syncConnected) return;
     if (_cloudSavePending) clearTimeout(_cloudSavePending);
     _cloudSavePending = setTimeout(function() {
       doUpload()
-        .then(function() { lastSyncedAt = Date.now(); })
-        .catch(function() {});
+        .then(function() {
+          lastSyncedAt = Date.now();
+          _cloudSaveRetries = 0;
+          var btnLabel = document.querySelector('#cloudBtn .cloud-label');
+          if (btnLabel) {
+            var orig = btnLabel.textContent;
+            btnLabel.textContent = '已同步';
+            setTimeout(function() { if (btnLabel.textContent === '已同步') btnLabel.textContent = orig; }, 2000);
+          }
+        })
+        .catch(function() {
+          _cloudSaveRetries++;
+          if (_cloudSaveRetries < 3) { setTimeout(autoCloudSave, 5000); }
+        });
       _cloudSavePending = null;
-    }, 2000);
+    }, 1500);
   }
 
-  /* ===================== 目标体重 ===================== */
+  /* ===================== 目标体重 & 起始体重 ===================== */
   function getTargetWeight() {
-    // 健康生活独立的体重目标，不与目标激励关联
-    return (state.healthTarget && state.healthTarget.weight) || 55;
+    return (state.healthTarget && state.healthTarget.weight) || null;
+  }
+  function getStartWeight() {
+    if (state.healthTarget && state.healthTarget.startWeight != null) {
+      return state.healthTarget.startWeight;
+    }
+    const ws = [...state.weight].sort((a, b) => a.date.localeCompare(b.date));
+    return ws.length ? ws[0].weight : null;
   }
 
   function openHealthTargetModal() {
-    var tgt = (state.healthTarget && state.healthTarget.weight) || 55;
+    var tgt = getTargetWeight();
+    var start = getStartWeight();
     openModal({
       title: '设置健康目标',
       body: '<div style="padding:8px 0">' +
         '<div class="form-group"><label>目标体重 (kg)</label>' +
-        '<input class="inp" type="number" id="htWeight" value="' + tgt + '" step="0.1" min="30" max="200" placeholder="比如 55.0">' +
+        '<input class="inp" type="number" id="htWeight" value="' + (tgt != null ? tgt : '') + '" step="0.1" min="30" max="200" placeholder="比如 55.0">' +
+        '</div>' +
+        '<div class="form-group"><label>起始体重 (kg) <span style="font-weight:400;color:var(--ink-light);font-size:10px">用于计算进度，不填则自动取最早记录</span></label>' +
+        '<input class="inp" type="number" id="htStartWeight" value="' + (start != null ? start : '') + '" step="0.1" min="30" max="200" placeholder="比如 65.0">' +
         '</div>' +
         '</div>',
       foot: '<button class="btn ghost" onclick="closeModal()">取消</button><button class="btn" onclick="saveHealthTarget()">保存</button>'
@@ -506,22 +563,29 @@
   }
   function saveHealthTarget() {
     var w = parseFloat(document.getElementById('htWeight').value);
-    if (!w || w < 30 || w > 200) return toast('请输入合理的体重 (30-200 kg)');
+    var swInput = document.getElementById('htStartWeight').value.trim();
+    var sw = swInput ? parseFloat(swInput) : null;
+    if (!w || w < 30 || w > 200) return toast('请输入合理的目标体重 (30-200 kg)');
+    if (sw != null && (sw < 30 || sw > 200)) return toast('请输入合理的起始体重 (30-200 kg)');
     if (!state.healthTarget) state.healthTarget = {};
     state.healthTarget.weight = w;
+    if (sw != null) state.healthTarget.startWeight = sw;
+    else delete state.healthTarget.startWeight;
     save(); closeModal(); renderAll();
-    toast('健康目标已更新：' + w + ' kg');
+    toast('健康目标已更新');
   }
 
   /* ===================== 页头 ===================== */
   function renderHead() {
-    const d = new Date();
-    const wk = ['日', '一', '二', '三', '四', '五', '六'][d.getDay()];
+    var profile = getUserProfile();
+    var d = new Date();
+    var wk = ['日', '一', '二', '三', '四', '五', '六'][d.getDay()];
     $('dateLine').textContent = d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日 · 星期' + wk;
-    const h = d.getHours();
-    let g = '下午好';
+    var h = d.getHours();
+    var g = '下午好';
     if (h < 6) g = '凌晨好'; else if (h < 11) g = '早上好'; else if (h < 13) g = '中午好'; else if (h < 18) g = '下午好'; else g = '晚上好';
-    $('greetLine').innerHTML = g + '，<b>樱苓</b> <span class="mood-wrap" style="margin-left:2px"><span class="mood-trigger" id="moodIcon" onclick="toggleMoodPanel(event)" title="选择心情"><svg id="moodIconSvg" viewBox="0 0 24 24" width="22" height="22"></svg></span><span class="mood-backdrop" id="moodBackdrop" onclick="closeMoodPanel()"></span><span class="mood-panel" id="moodPanel"></span></span>';
+    var avatarHtml = getAvatarHtml(profile, 28);
+    $('greetLine').innerHTML = g + '，' + avatarHtml + ' <span class="mood-wrap" style="margin-left:2px"><span class="mood-trigger" id="moodIcon" onclick="toggleMoodPanel(event)" title="选择心情"><svg id="moodIconSvg" viewBox="0 0 24 24" width="22" height="22"></svg></span><span class="mood-backdrop" id="moodBackdrop" onclick="closeMoodPanel()"></span><span class="mood-panel" id="moodPanel"></span></span>';
     if (!state.mood || state.mood.date !== today()) { state.mood = { date: today(), value: 'happy' }; }
     renderMoodIcon();
   }
@@ -900,6 +964,75 @@
   function goTodayTodoDay() { todoViewDate = today(); renderToday() }
 
   /* ===================== 日历（含待办+特殊日子集成） ===================== */
+  // 中国法定节假日（公历日期，涵盖2025-2027年）
+  const CHINESE_HOLIDAYS = {
+    2025: {
+      '01-01':'元旦','01-29':'春节','01-30':'春节','01-31':'春节','02-01':'春节','02-02':'春节','02-03':'春节','02-04':'春节',
+      '04-04':'清明节','05-01':'劳动节','05-02':'劳动节','05-03':'劳动节','05-04':'劳动节','05-05':'劳动节',
+      '05-31':'端午节','10-01':'国庆节','10-02':'国庆节','10-03':'国庆节','10-04':'国庆节','10-05':'国庆节','10-06':'中秋节·国庆','10-07':'国庆节','10-08':'国庆节'
+    },
+    2026: {
+      '01-01':'元旦','02-17':'春节','02-18':'春节','02-19':'春节','02-20':'春节','02-21':'春节','02-22':'春节','02-23':'春节',
+      '04-05':'清明节','05-01':'劳动节','05-02':'劳动节','05-03':'劳动节','05-04':'劳动节','05-05':'劳动节',
+      '06-19':'端午节','09-25':'中秋节','10-01':'国庆节','10-02':'国庆节','10-03':'国庆节','10-04':'国庆节','10-05':'国庆节','10-06':'国庆节','10-07':'国庆节'
+    },
+    2027: {
+      '01-01':'元旦','02-06':'春节','02-07':'春节','02-08':'春节','02-09':'春节','02-10':'春节','02-11':'春节','02-12':'春节',
+      '04-05':'清明节','05-01':'劳动节','05-02':'劳动节','05-03':'劳动节','05-04':'劳动节','05-05':'劳动节',
+      '06-09':'端午节','09-15':'中秋节','10-01':'国庆节','10-02':'国庆节','10-03':'国庆节','10-04':'国庆节','10-05':'国庆节','10-06':'国庆节','10-07':'国庆节'
+    }
+  };
+  // ========== 农历（公历 → 农历转换，覆盖1900-2100年）==========
+  // 每年编码：低4位=闰月(0无闰)，bit4~15=12个常规月大小(1=30天,0=29天)，bit16=闰月大小(1=30天)
+  const LUNAR_INFO = [0x04bd8,0x04ae0,0x0a570,0x054d5,0x0d260,0x0d950,0x16554,0x056a0,0x09ad0,0x055d2,0x04ae0,0x0a5b6,0x0a4d0,0x0d250,0x1d255,0x0b540,0x0d6a0,0x0ada2,0x095b0,0x14977,0x04970,0x0a4b0,0x0b4b5,0x06a50,0x06d40,0x1ab54,0x02b60,0x09570,0x052f2,0x04970,0x06566,0x0d4a0,0x0ea50,0x06e95,0x05ad0,0x02b60,0x186e3,0x092e0,0x1c8d7,0x0c950,0x0d4a0,0x1d8a6,0x0b550,0x056a0,0x1a5b4,0x025d0,0x092d0,0x0d2b2,0x0a950,0x0b557,0x06ca0,0x0b550,0x15355,0x04da0,0x0a5b0,0x14573,0x052b0,0x0a9a8,0x0e950,0x06aa0,0x0aea6,0x0ab50,0x04b60,0x0aae4,0x0a570,0x05260,0x0f263,0x0d950,0x05b57,0x056a0,0x096d0,0x04dd5,0x04ad0,0x0a4d0,0x0d4d4,0x0d250,0x0d558,0x0b540,0x0b6a0,0x195a6,0x095b0,0x049b0,0x0a974,0x0a4b0,0x0b27a,0x06a50,0x06d40,0x0af46,0x0ab60,0x09570,0x04af5,0x04970,0x064b0,0x074a3,0x0ea50,0x06b58,0x055c0,0x0ab60,0x096d5,0x092e0,0x0c960,0x0d954,0x0d4a0,0x0da50,0x07552,0x056a0,0x0abb7,0x025d0,0x092d0,0x0cab5,0x0a950,0x0b4a0,0x0baa4,0x0ad50,0x055d9,0x04ba0,0x0a5b0,0x15176,0x052b0,0x0a930,0x07954,0x06aa0,0x0ad50,0x05b52,0x04b60,0x0a6e6,0x0a4e0,0x0d260,0x0ea65,0x0d530,0x05aa0,0x076a3,0x096d0,0x04afb,0x04ad0,0x0a4d0,0x1d0b6,0x0d250,0x0d520,0x0dd45,0x0b5a0,0x056d0,0x055b2,0x049b0,0x0a577,0x0a4b0,0x0aa50,0x1b255,0x06d20,0x0ada0,0x14b63,0x09370,0x049f8,0x04970,0x064b0,0x168a6,0x0ea50,0x06b20,0x1a6c4,0x0aae0,0x0a2e0,0x0d2e3,0x0c960,0x0d557,0x0d4a0,0x0da50,0x05d55,0x056a0,0x0a6d0,0x055d4,0x052d0,0x0a9b8,0x0a950,0x0b4a0,0x0b6a6,0x0ad50,0x055a0,0x0aba4,0x0a5b0,0x052b0,0x0b273,0x06930,0x07337,0x06aa0,0x0ad50,0x14b55,0x04b60,0x0a570,0x054e4,0x0d160,0x0e968,0x0d520,0x0daa0,0x16aa6,0x056d0,0x04ae0,0x0a9d4,0x0a4d0,0x0d150,0x0f252,0x0d520];
+  const LUNAR_DAY = ['','初一','初二','初三','初四','初五','初六','初七','初八','初九','初十','十一','十二','十三','十四','十五','十六','十七','十八','十九','二十','廿一','廿二','廿三','廿四','廿五','廿六','廿七','廿八','廿九','三十'];
+  const LUNAR_MON = ['','正月','二月','三月','四月','五月','六月','七月','八月','九月','十月','冬月','腊月'];
+
+  function lunarYearDays(y) { var i,s=348; for(i=0x8000;i>0x8;i>>=1)s+=(LUNAR_INFO[y-1900]&i)?1:0; return s+lunarLeapDays(y); }
+  function lunarLeapMonth(y) { return LUNAR_INFO[y-1900]&0xf; }
+  function lunarLeapDays(y) { return lunarLeapMonth(y)?(LUNAR_INFO[y-1900]&0x10000?30:29):0; }
+  function lunarMonthDays(y,m) { return (LUNAR_INFO[y-1900]&(0x10000>>m))?30:29; }
+
+  function solarToLunar(y, m, d) {
+    // 以1900年1月31日（农历庚子年正月初一）为基准
+    var offset = Math.floor((Date.UTC(y,m-1,d) - Date.UTC(1900,0,31)) / 86400000);
+    var ly, lm, ld, i, tmp, leap, isLeap = false;
+    for (ly = 1900; ly < 2101 && offset > 0; ly++) offset -= lunarYearDays(ly);
+    if (offset < 0) { offset += lunarYearDays(ly-1); ly--; }
+    leap = lunarLeapMonth(ly);
+    for (lm = 1; lm < 13 && offset > 0; lm++) {
+      if (leap > 0 && lm === (leap + 1) && !isLeap) {
+        lm--; isLeap = true; tmp = lunarLeapDays(ly);
+      } else { tmp = lunarMonthDays(ly, lm); }
+      if (isLeap && lm === (leap + 1)) isLeap = false;
+      offset -= tmp;
+    }
+    if (offset === 0 && leap === lm && !isLeap) { isLeap = true; lm--; }
+    else if (offset < 0) { offset += tmp; lm--; }
+    ld = offset + 1;
+    return { year: ly, month: lm, day: ld, isLeap: isLeap };
+  }
+
+  function getLunarDisplay(y, m, d) {
+    var lu = solarToLunar(y, m, d);
+    // 特殊节日
+    if (lu.month === 1 && lu.day === 1) return '春节';
+    if (lu.month === 1 && lu.day === 15) return '元宵';
+    if (lu.month === 5 && lu.day === 5) return '端午';
+    if (lu.month === 7 && lu.day === 7) return '七夕';
+    if (lu.month === 7 && lu.day === 15) return '中元';
+    if (lu.month === 8 && lu.day === 15) return '中秋';
+    if (lu.month === 9 && lu.day === 9) return '重阳';
+    if (lu.month === 12 && lu.day === 8) return '腊八';
+    if (lu.month === 12 && lu.day === 23) return '小年';
+    if (lu.month === 12 && lu.day === 30) return '除夕';
+    // 每月初一显示月份名
+    if (lu.day === 1) return (lu.isLeap ? '闰' : '') + LUNAR_MON[lu.month];
+    // 其他显示日期名
+    return LUNAR_DAY[lu.day];
+  }
+  // ========== 农历结束 ==========
+
   const TODO_TYPES = [
     { id: 'life', label: '生活', cls: 'life', color: '--o300', bg: '--o50' },
     { id: 'work', label: '工作', cls: 'work', color: '--pu300', bg: '--pu50' },
@@ -938,17 +1071,53 @@
         dayMarkers[dk].add(t.type || 'life');
       }
     });
+
+    // 从个人资料读取生日（自动显示在日历上）
+    var profileBirthday = getUserProfile() && getUserProfile().birthday;
+    var profileBdayMmdd = null;
+    var profileBdayName = '我的生日';
+    if (profileBirthday && profileBirthday !== '未设置') {
+      var parts = profileBirthday.split('-');
+      if (parts.length >= 3) {
+        profileBdayMmdd = parts[1] + '-' + parts[2];
+        var profile = getUserProfile();
+        profileBdayName = (profile && profile.nickname) ? (profile.nickname + '的生日') : '我的生日';
+      }
+    }
+
     state.events.forEach(e => {
       const dk = e.date;
       if (!dayMarkers[dk]) dayMarkers[dk] = new Set();
       dayMarkers[dk].add(e.type);
     });
+    // 自动添加个人资料生日到标记映射
+    if (profileBdayMmdd) {
+      if (!dayMarkers[profileBdayMmdd]) dayMarkers[profileBdayMmdd] = new Set();
+      dayMarkers[profileBdayMmdd].add('birthday');
+    }
+
+    // 从个人资料读取生日（自动显示在日历上）
+    var profileBirthday = getUserProfile() && getUserProfile().birthday;
+    var profileBdayMmdd = null;
+    var profileBdayName = '我的生日';
+    if (profileBirthday && profileBirthday !== '未设置') {
+      var parts = profileBirthday.split('-');
+      if (parts.length >= 3) {
+        profileBdayMmdd = parts[1] + '-' + parts[2];
+        var profile = getUserProfile();
+        profileBdayName = (profile && profile.nickname) ? (profile.nickname + '的生日') : '我的生日';
+      }
+    }
 
     // 构建生日/纪念日/假期 标记映射（用于圆底纹 + 假期小字）
     const specialDayMap = {}; // dateKey -> {type:'birthday'|'special'|'holiday', name:''}
     state.events.forEach(e => {
       specialDayMap[e.date] = e; // 同一天有多个事件时，取第一个
     });
+    // 自动添加个人资料生日（不覆盖已手动创建的生日事件）
+    if (profileBdayMmdd && !specialDayMap[profileBdayMmdd]) {
+      specialDayMap[profileBdayMmdd] = { type: 'birthday', name: profileBdayName, recurring: true, isAuto: true };
+    }
 
     // 本月事件
     const monthPrefix = String(calMonth).padStart(2, '0') + '-';
@@ -959,6 +1128,11 @@
         monthEvs.push({ ...e, day, fullDate: calYear + '-' + String(calMonth).padStart(2, '0') + '-' + String(day).padStart(2, '0') });
       }
     });
+    // 自动添加个人资料生日到月事件列表
+    if (profileBdayMmdd && profileBdayMmdd.startsWith(monthPrefix) && !monthEvs.some(function(e) { return e.date === profileBdayMmdd && e.type === 'birthday'; })) {
+      var bday = parseInt(profileBdayMmdd.split('-')[1]);
+      monthEvs.push({ date: profileBdayMmdd, type: 'birthday', name: profileBdayName, day: bday, recurring: true, isAuto: true, fullDate: calYear + '-' + String(calMonth).padStart(2, '0') + '-' + String(bday).padStart(2, '0') });
+    }
     monthEvs.sort((a, b) => a.day - b.day);
 
     // 构建日历格子
@@ -980,13 +1154,16 @@
       const isWeekend = dowIdx === 0 || dowIdx === 6;
       const isSat = dowIdx === 6, isSun = dowIdx === 0;
       const isManualHoliday = state.holidays && state.holidays.includes(dateKey);
+      const legalHolidayName = (CHINESE_HOLIDAYS[calYear] || {})[dateKey];
+      const isLegalHoliday = !!legalHolidayName;
 
       // CSS类
       let dayCls = 'cal-day' + (isToday ? ' today' : '');
       if (sp && sp.type === 'birthday') dayCls += ' special-day birthday';
       if (sp && sp.type === 'special') dayCls += ' special-day special';
       if (sp && sp.type === 'holiday') dayCls += ' holiday-day';
-      if (isWeekend || isManualHoliday) dayCls += ' weekend' + (isSat ? ' sat' : '') + (isSun ? ' sun' : '');
+      if (isLegalHoliday) dayCls += ' legal-holiday';
+      if (isWeekend || isManualHoliday || isLegalHoliday) dayCls += ' weekend' + (isSat ? ' sat' : '') + (isSun ? ' sun' : '');
 
       let dotsHtml = '';
       if (types && types.size) {
@@ -995,10 +1172,16 @@
         dotsHtml += '</div>';
       }
       let holidayTag = '';
-      if (sp && sp.type === 'holiday') {
+      if (isLegalHoliday) {
+        holidayTag = '<div class="cal-holiday-tag legal">' + esc(legalHolidayName) + '</div>';
+      } else if (sp && sp.type === 'holiday') {
         holidayTag = '<div class="cal-holiday-tag">假</div>';
       }
-      cells += '<div class="' + dayCls + '" onclick="pickCalDay(' + d + ')"><div class="cal-num">' + d + '</div>' + holidayTag + dotsHtml + '</div>';
+      var lunarText = getLunarDisplay(calYear, calMonth, d);
+      var lunarCls = 'cal-lunar';
+      // 特殊节日用彩色标记
+      if (lunarText === '春节' || lunarText === '元宵' || lunarText === '端午' || lunarText === '中秋' || lunarText === '七夕' || lunarText === '除夕') lunarCls += ' lunar-fest';
+      cells += '<div class="' + dayCls + '" onclick="pickCalDay(' + d + ')"><div class="cal-num">' + d + '</div><div class="' + lunarCls + '">' + lunarText + '</div>' + holidayTag + dotsHtml + '</div>';
     }
     var totalCells = firstDow + daysInMonth;
     var remaining = totalCells % 7 === 0 ? 0 : 7 - totalCells % 7;
@@ -1009,9 +1192,12 @@
     $('calArea').innerHTML =
       '<div class="cal-card">' +
       '<div class="cal-nav">' +
+      '<button onclick="prevCalYear()" class="cal-year-btn" title="上一年"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/><polyline points="21 18 15 12 21 6"/></svg></button>' +
       '<button onclick="prevCalMonth()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>' +
       '<div class="mnth">' + calYear + '年 ' + calMonth + '月</div>' +
       '<button onclick="nextCalMonth()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>' +
+      '<button onclick="nextCalYear()" class="cal-year-btn" title="下一年"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 18 9 12 3 6"/><polyline points="9 18 15 12 9 6"/></svg></button>' +
+      '<button onclick="toggleLunar()" class="cal-lunar-btn' + (_showLunar ? ' active' : '') + '" title="' + (_showLunar ? '隐藏农历' : '显示农历') + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a7 7 0 1 0 7 7"/></svg></button>' +
       '</div>' +
       '<div class="cal-grid">' +
       '<div class="cal-dow">日</div><div class="cal-dow">一</div><div class="cal-dow">二</div><div class="cal-dow">三</div><div class="cal-dow">四</div><div class="cal-dow">五</div><div class="cal-dow">六</div>' +
@@ -1025,6 +1211,7 @@
       '<div class="cal-legend-item"><span class="cal-legend-dot birthday"></span>生日</div>' +
       '<div class="cal-legend-item"><span class="cal-legend-dot special"></span>纪念日</div>' +
       '<div class="cal-legend-item"><span class="cal-legend-dot holiday"></span>假期</div>' +
+      '<div class="cal-legend-item"><span class="cal-legend-dot legal-holiday"></span>法定假日</div>' +
       '</div>' +
       '</div>' +
       '<div class="cal-ev-list">' +
@@ -1034,10 +1221,13 @@
           '<div class="cico ' + e.type + '">' + evIcon(e.type) + '</div>' +
           '<div class="ctext">' + esc(e.name) + '<span class="ev-label ' + e.type + '">' + (e.type === 'birthday' ? '生日' : e.type === 'holiday' ? '假期' : '纪念') + '</span>' + (e.note ? '<div style="font-size:10px;color:var(--ink-light);font-weight:400">' + esc(e.note) + '</div>' : '') + '</div>' +
           '<div class="cdt">' + e.day + '日</div>' +
-          '<div class="cdel" onclick="delEvent(\'' + e.id + '\')">删除</div>' +
+          (e.isAuto ? '<div class="cdel" style="opacity:0.4;cursor:default" title="请在个人资料中修改">自动</div>' : '<div class="cdel" onclick="delEvent(\'' + e.id + '\')">删除</div>') +
           '</div>';
       }).join('') : '<div style="text-align:center;color:var(--ink-light);font-size:12px;padding:12px">本月暂无纪念日</div>') +
       '</div>';
+    // 农历显示开关
+    if (_showLunar) { $('calArea').classList.remove('cal-no-lunar') }
+    else { $('calArea').classList.add('cal-no-lunar') }
   }
 
   /* 点击日历日期 → 弹出快捷添加菜单 */
@@ -1177,6 +1367,9 @@
 
   function prevCalMonth() { if (calMonth === 1) { calYear--; calMonth = 12 } else calMonth--; renderCalendar() }
   function nextCalMonth() { if (calMonth === 12) { calYear++; calMonth = 1 } else calMonth++; renderCalendar() }
+  function prevCalYear() { calYear--; renderCalendar() }
+  function nextCalYear() { calYear++; renderCalendar() }
+  function toggleLunar() { _showLunar = !_showLunar; renderCalendar() }
   function delEvent(id) { conf('删除这条记录？', function () { state.events = state.events.filter(function (e) { return e.id !== id }); save(); renderAll() }) }
 
   /* ===================== 习惯打卡（仅健康页使用） ===================== */
@@ -1480,11 +1673,13 @@
   /* ===================== 健康页面 ===================== */
   function renderHealthStats() {
     const w = [...state.weight].sort((a, b) => a.date.localeCompare(b.date));
-    const cur = w[w.length - 1]; const start = w[0];
+    const cur = w[w.length - 1];
+    const startWeight = getStartWeight();
+    const start = startWeight != null ? { weight: startWeight } : null;
     const lost = start ? +(start.weight - (cur?.weight || start.weight)).toFixed(1) : 0;
     const tgt = getTargetWeight();
-    const toGo = cur ? +(cur.weight - tgt).toFixed(1) : tgt;
-    const pct = cur ? Math.min(100, Math.round(((start.weight - cur.weight) / (start.weight - tgt)) * 100)) : 0;
+    const toGo = cur && tgt != null ? +(cur.weight - tgt).toFixed(1) : null;
+    const pct = cur && start && tgt != null ? Math.min(100, Math.round(((start.weight - cur.weight) / (start.weight - tgt)) * 100)) : 0;
     const streak = calcStreak();
 
     $('healthStats').innerHTML = `
@@ -1492,13 +1687,13 @@
     <div class="stat"><div class="v">${cur ? cur.weight : '—'}</div><div class="l">当前体重 kg</div></div>
     <div class="stat"><div class="v">${cur && cur.bodyFat != null ? cur.bodyFat + '%' : '—'}</div><div class="l">体脂率</div></div>
     <div class="stat"><div class="v g">${lost > 0 ? '-' + lost : '—'}</div><div class="l">已减重 kg</div></div>
-    <div class="stat"><div class="v c">${toGo > 0 ? toGo : '🎯'}</div><div class="l">距目标 kg</div></div>
+    <div class="stat"><div class="v c">${toGo != null ? (toGo > 0 ? toGo : '🎯') : '—'}</div><div class="l">距目标 kg</div></div>
   </div>
   <div class="prog-card">
     <div class="prog-ring">${ringSvg(pct, 52, 5, '#7AAA67')}</div>
     <div class="prog-info">
       <div class="t1">本月健康进度</div>
-      <div class="t2">从 ${start?.weight || '—'} → ${tgt} kg</div>
+      <div class="t2">从 ${start?.weight || '—'} → ${tgt != null ? tgt : '—'} kg</div>
       <div class="t3">从「设置健康目标」独立设置，与目标激励无关</div>
     </div>
   </div>`;
@@ -1671,8 +1866,9 @@
       const typeLabel = g.category === 'health' ? '🩺 健康' : '📋 任务';
       const typeCls = 'task';
       // 健康目标显示目标信息
+      const tgtW = getTargetWeight();
       const healthTgtInfo = g.category === 'health'
-        ? ('减到 ' + getTargetWeight() + ' kg') + (g.bodyFatTgt ? ' · 体脂 ' + g.bodyFatTgt + '%' : '')
+        ? (tgtW != null ? ('减到 ' + tgtW + ' kg') : '') + (g.bodyFatTgt ? ' · 体脂 ' + g.bodyFatTgt + '%' : '')
         : '';
       // 进度奖励提示
       return `<div class="goal-card">
@@ -1796,6 +1992,12 @@
   let selTimerContent = '';
   let selTimerMode = 'up';
   let selTimerTarget = 25;
+  function updateCustTimer() {
+    var h = parseInt(document.getElementById('tcustH')?.value) || 0;
+    var m = parseInt(document.getElementById('tcustM')?.value) || 0;
+    selTimerTarget = Math.max(1, h * 60 + m);
+    renderStudy();
+  }
   function drawModuleChart(all) {
     var byMod = {};
     all.forEach(function (s) { byMod[s.skill] = (byMod[s.skill] || 0) + (s.duration || 0) });
@@ -1971,9 +2173,11 @@
         '<span class="tmode-opt' + (!modeUp ? ' active' : '') + '" onclick="selTimerMode=\'down\';renderStudy()">倒计时</span>' +
         '</div>' +
         (!modeUp
-          ? '<div class="timer-target-row">' + [15, 25, 30, 45, 60].map(function (v) { return '<span class="tchip' + (selTimerTarget === v ? ' active' : '') + '" onclick="selTimerTarget=' + v + ';renderStudy()">' + v + 'min</span>' }).join('') + '<input class="tchip-inp" type="number" id="tcustMin" placeholder="自定义" min="1" max="180" onchange="selTimerTarget=+this.value||25;renderStudy()"></div>'
+          ? '<div class="timer-target-row">' + [15, 25, 30, 45, 60].map(function (v) { return '<span class="tchip' + (selTimerTarget === v ? ' active' : '') + '" onclick="selTimerTarget=' + v + ';renderStudy()">' + v + 'min</span>' }).join('') +
+            '<div class="tchip-cust-wrap"><input class="tchip-inp tchip-h" type="number" id="tcustH" placeholder="时" min="0" max="23" value="' + Math.floor(selTimerTarget/60) + '" onchange="updateCustTimer();renderStudy()"><span class="tchip-sep">:</span><input class="tchip-inp tchip-m" type="number" id="tcustM" placeholder="分" min="0" max="59" value="' + (selTimerTarget%60) + '" onchange="updateCustTimer();renderStudy()"></div>' +
+            '</div>'
           : '') +
-        '<button class="btn-timer-start" onclick="startStudyTimer()"' + (ready ? '' : ' disabled') + '><svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13" style="vertical-align:-1px;margin-right:2px"><polygon points="6,3 20,12 6,21"/></svg>开始学习</button>' +
+        '<button class="btn-timer-start" onclick="if(!selTimerModule){toast(\'请先选择学习模块\');return;}startStudyTimer()"' + (ready ? '' : ' disabled') + '><svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13" style="vertical-align:-1px;margin-right:2px"><polygon points="6,3 20,12 6,21"/></svg>开始学习</button>' +
         '</div>' +
         '</div>';
     }
@@ -2500,9 +2704,42 @@
     var curAcc = SETTINGS_ACCENTS.find(function (a) { return a.id === s.accent; }) || SETTINGS_ACCENTS[0];
     var hintText = isCustom ? ('自定义 ' + s.accentColor) : curAcc.label;
 
+    // 构建个人资料摘要
+    var profile = getUserProfile();
+    var avatarHtml = getAvatarHtml(profile, 44);
+    var genderLabel = { female: '女', male: '男', other: '其他' };
+    var profileInfoRows = [
+      { label: '手机号', value: profile.phone || '未设置' },
+      { label: '邮箱', value: profile.email || '未设置' },
+      { label: '性别', value: genderLabel[profile.gender] || '未设置' },
+      { label: '生日', value: profile.birthday || '未设置' },
+      { label: '身高', value: profile.height ? (profile.height + ' cm') : '未设置' }
+    ];
+
+    var profileSection = '' +
+      '<div style="background:var(--g50);border-radius:12px;padding:14px;margin-bottom:16px;border:1.5px solid var(--line)">' +
+        '<div class="settings-row" style="margin-bottom:0;padding:0">' +
+          '<div style="display:flex;align-items:center;gap:12px">' +
+            avatarHtml +
+            '<div>' +
+              '<div style="font-weight:600;font-size:15px;color:var(--text)">' + (profile.nickname || '用户') + '</div>' +
+              '<div style="font-size:11px;color:var(--ink-light);margin-top:2px">个人信息</div>' +
+            '</div>' +
+          '</div>' +
+          '<button class="btn ghost" onclick="closeModal();openProfileEditor()" style="padding:6px 14px;font-size:12px;border-radius:8px">编辑</button>' +
+        '</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:10px;font-size:11px;color:var(--ink-light)">' +
+          profileInfoRows.map(function(r) {
+            return '<span><span style="color:var(--g300)">' + r.label + '：</span>' + r.value + '</span>';
+          }).join('') +
+        '</div>' +
+      '</div>';
+
     openModal({
-      title: '页面设置',
-      body: '<div class="settings-grid">' +
+      title: '设置',
+      body: profileSection +
+        '<div style="font-size:12px;color:var(--g300);font-weight:600;margin-bottom:8px">页面偏好</div>' +
+        '<div class="settings-grid">' +
         '<div class="settings-row">' +
         '<div><div class="label">夜间模式</div><div class="hint">深色背景，更适合夜间阅读</div></div>' +
         '<label class="toggle-sw"><input type="checkbox" id="setTheme" ' + (s.theme === 'dark' ? 'checked' : '') + ' onchange="updateSetting(\'theme\',this.checked?\'dark\':\'light\')"><span class="track"></span></label>' +
@@ -2606,7 +2843,7 @@
     } else {
       b.classList.add('active'); a.classList.remove('active');
       pb.classList.add('active'); pa.classList.remove('active');
-      trainWeekStart = getMonday(new Date());
+      initTrainWeek(); // 首次进入跳到本周，之后记住位置
       renderHabits('healthHabits'); renderTrainLogs('trainRecords');
     }
   }
@@ -2673,14 +2910,16 @@
   function computeRestDays() {
     var set = {};
     state.restDays.forEach(function (d) { set[d] = 'rest' });
-    state.periods.forEach(function (p) {
-      var start = new Date(p.start);
-      var dur = p.duration || 5;
-      for (var i = 0; i < dur; i++) {
-        var d = new Date(start); d.setDate(start.getDate() + i);
-        set[fmtTrainDate(d)] = 'period';
-      }
-    });
+    if (isFemaleUser()) {
+      state.periods.forEach(function (p) {
+        var start = new Date(p.start);
+        var dur = p.duration || 5;
+        for (var i = 0; i < dur; i++) {
+          var d = new Date(start); d.setDate(start.getDate() + i);
+          set[fmtTrainDate(d)] = 'period';
+        }
+      });
+    }
     return set;
   }
 
@@ -2692,8 +2931,9 @@
     save(); renderTrainLogs('trainRecords');
   }
 
-  // 记录姨妈期弹窗
+  // 记录姨妈期弹窗（仅女性可用）
   function openPeriodModal() {
+    if (!isFemaleUser()) { toast('仅女性用户可使用经期记录'); return; }
     var listHtml = '';
     if (state.periods.length) {
       listHtml = '<div style="margin-bottom:12px;font-size:11px;color:var(--ink-soft)">历史记录：</div>';
@@ -2752,19 +2992,24 @@
 
   function renderTrainLogs(containerId) {
     initTrainWeek();
+    // 控制经期链接可见性
+    var pl = document.getElementById('periodLink');
+    if (pl) pl.style.display = isFemaleUser() ? '' : 'none';
     var todayStr = today();
     var isThisWeek = fmtTrainDate(getMonday(new Date())) === fmtTrainDate(trainWeekStart);
     var restMap = computeRestDays();
 
-    // 导航栏：加入姨妈期提示
+    // 导航栏：加入姨妈期提示（仅女性显示）
     var periodHint = '';
-    state.periods.forEach(function (p) {
-      var pStart = new Date(p.start); var dur = p.duration || 5;
-      var pEnd = new Date(p.start); pEnd.setDate(pStart.getDate() + dur - 1);
-      if (pEnd >= trainWeekStart && pStart < new Date(trainWeekStart.getTime() + 7 * 864e5)) {
-        periodHint = '<span style="font-size:10px;color:var(--p300);white-space:nowrap">' + (pStart.getMonth() + 1) + '/' + pStart.getDate() + '起姨妈期 · ' + dur + '天</span>';
-      }
-    });
+    if (isFemaleUser()) {
+      state.periods.forEach(function (p) {
+        var pStart = new Date(p.start); var dur = p.duration || 5;
+        var pEnd = new Date(p.start); pEnd.setDate(pStart.getDate() + dur - 1);
+        if (pEnd >= trainWeekStart && pStart < new Date(trainWeekStart.getTime() + 7 * 864e5)) {
+          periodHint = '<span style="font-size:10px;color:var(--p300);white-space:nowrap">' + (pStart.getMonth() + 1) + '/' + pStart.getDate() + '起姨妈期 · ' + dur + '天</span>';
+        }
+      });
+    }
     var navHtml = '<button onclick="prevTrainWeek()" title="上一周">&larr;</button>' +
       '<div class="week-label">' + fmtWeekRange(trainWeekStart) + (isThisWeek ? '（本周）' : '') + '</div>' +
       '<button onclick="nextTrainWeek()" title="下一周">&rarr;</button>' +
@@ -2852,7 +3097,17 @@
     }
     html += '</div>';
     var target = document.getElementById(containerId);
-    if (target) target.innerHTML = html;
+    if (target) {
+      target.innerHTML = html;
+      // 自动滚动到今天在顶端
+      var todayHd = target.querySelector('.train-list-day-hd.today');
+      if (todayHd) {
+        var list = target.querySelector('.train-list');
+        if (list) {
+          list.scrollTop = todayHd.parentElement.offsetTop - 4;
+        }
+      }
+    }
   }
 
   /* ===================== 训练弹窗：分类+下拉+参数 ===================== */
@@ -2911,7 +3166,16 @@
     var panel = document.getElementById('exPanel');
     var btn = document.getElementById('exBtn');
     _exPanelOpen = !_exPanelOpen;
-    if (_exPanelOpen) { panel.classList.add('show'); btn.classList.add('open') }
+    if (_exPanelOpen) {
+      panel.classList.add('show'); btn.classList.add('open');
+      // 展开时自动滚动弹窗，让下拉按钮靠近顶部，避免面板被裁切
+      var modal = document.querySelector('.modal');
+      var dropdown = document.getElementById('exDropdown');
+      if (modal && dropdown) {
+        var offset = dropdown.getBoundingClientRect().top - modal.getBoundingClientRect().top - 20;
+        modal.scrollTop += offset;
+      }
+    }
     else { panel.classList.remove('show'); btn.classList.remove('open') }
   }
 
@@ -3346,7 +3610,7 @@
 
   /* ===================== 渲染全体 ===================== */
   function renderAll() {
-    renderHead(); renderBkHint();
+    renderHead(); renderBkHint(); renderSoulQuote();
     // 初始化日历月份
     if (!calYear) { const now = new Date(); calYear = now.getFullYear(); calMonth = now.getMonth() + 1; }
     if (curPage === 'today') { renderToday(); renderCalendar() }
@@ -3362,34 +3626,42 @@
 
   // ============ 异步加载 data.json 并初始化应用 ============
   (async function initApp() {
+    var step = '';
     try {
-      var resp = await fetch('data.json');
-      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      // 使用 ?v 参数破坏 Service Worker 缓存
+      step = 'fetch data.json';
+      var fetchUrl = 'data.json?v=' + Date.now();
+      var resp = await fetch(fetchUrl);
+      if (!resp.ok) throw new Error('HTTP ' + resp.status + ' (URL: ' + fetchUrl + ')');
+      step = 'parse JSON';
       var appData = await resp.json();
       var _td = today();
       var _yd = yday();
 
-      // 解析日期占位符（__TODAY__ / __YESTERDAY__ → 实际日期）
+      step = 'resolvePlaceholders';
       resolvePlaceholders(appData, _td, _yd);
 
-      // 填充全局常量
+      step = 'init globals';
       defData = appData.defaultData;
-      DEFAULT_SETTINGS = appData.defaultSettings;
-      MOODS = appData.moods;
-      WEATHER_CODES = appData.weatherCodes;
-      SETTINGS_ACCENTS = appData.accentPresets;
-      SETTINGS_FONTS = appData.fontSizes;
-      HABITS = appData.habits;
-      CATEGORIES = appData.categories;
+      DEFAULT_SETTINGS = appData.defaultSettings || {};
+      MOODS = appData.moods || [];
+      WEATHER_CODES = appData.weatherCodes || [];
+      SETTINGS_ACCENTS = appData.accentPresets || [];
+      SETTINGS_FONTS = appData.fontSizes || [];
+      HABITS = appData.habits || [];
+      CATEGORIES = appData.categories || [];
       appSettings = DEFAULT_SETTINGS;
 
-      // 初始化 state（loadData 内部会引用 defData）
+      step = 'loadData';
       state = loadData();
+      step = 'loadSettings';
       loadSettings();
-      applySettings();
+      step = 'applySettings';
+      if (document.documentElement) applySettings();
+      else console.warn('[App] document.documentElement 不可用，跳过 applySettings');
       todoViewDate = today();
 
-      // 确保关键字段存在（兼容旧数据迁移遗漏）
+      step = 'ensure fields';
       if (!state.trainLogs) state.trainLogs = [];
       ensureTrainOrders();
       if (!state.restDays) state.restDays = [];
@@ -3399,78 +3671,230 @@
       if (!state.customHabits) state.customHabits = [];
       if (!state.studyModules) state.studyModules = [];
       if (!state.holidays) state.holidays = [];
-      if (!state.healthTarget) state.healthTarget = { weight: 55 };
+      if (!state.healthTarget) state.healthTarget = null;
 
-      // 初始渲染 + 天气
+      step = 'renderAll';
       renderAll();
       setTimeout(function () { fetchWeather(); }, 500);
 
-      console.log('[App] ✅ data.json 加载完成');
+      console.log('[App] ✅ 初始化完成');
     } catch (e) {
-      console.error('[App] ❌ data.json 加载失败:', e);
-      document.body.innerHTML = '<div style="padding:40px;text-align:center;font-family:system-ui"><h2>⚠ 数据加载失败</h2><p>请确保 data.json 与 index.html 在同一目录</p><p style="color:#888;font-size:13px;margin-top:8px">' + e.message + '</p></div>';
+      console.error('[App] ❌ 初始化失败 (step=' + step + '):', e);
+      document.body.innerHTML = '<div style="padding:40px;text-align:center;font-family:system-ui"><h2>⚠ 应用加载失败</h2><p>步骤: ' + step + '</p><p style="color:#c0392b;font-size:14px;margin:12px 0">' + e.message + '</p><p style="color:#888;font-size:12px;margin-top:20px">请尝试 <a href="javascript:location.reload(true)" style="color:#7AAA67">强制刷新</a> 或清除浏览器缓存后重试</p></div>';
     }
   })();
 
-  // 防止弹窗内回车提交 + 云同步弹窗回车触发验证
+  // 防止弹窗内回车提交
   document.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && e.target.closest('.auth-modal')) { e.preventDefault(); syncNowFromSettings('upload'); return; }
     if (e.key === 'Enter' && e.target.closest('.modal') && e.target.tagName !== 'TEXTAREA') e.preventDefault();
   });
-  // 点击遮罩关闭
-  document.getElementById('authOverlay').addEventListener('click', e => { if (e.target === e.currentTarget) closeAuth(); });
   // 刷新后滚动到顶部，避免缓存页面滚动位置
   window.addEventListener('pageshow', function() { setTimeout(function() { window.scrollTo(0, 0); }, 50); });
 
-/* ==================== PWA 支持 ==================== */
-(function() {
-// 内联 Manifest（Android Chrome 安装 App 必需）
-var iconSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#7EB89A"/><stop offset="100%" style="stop-color:#5A9A7A"/></linearGradient></defs><rect width="512" height="512" rx="100" fill="url(#g)"/><text x="256" y="320" font-size="280" text-anchor="middle" fill="#fff" font-family="sans-serif">樱</text></svg>';
-var manifest = {
-  name: '樱苓的日常记录',
-  short_name: '樱苓工作台',
-  description: '个人日常管理：日历、待办、目标、健康、记账',
-  start_url: location.href.split('?')[0],
-  display: 'standalone',
-  orientation: 'portrait',
-  background_color: '#FAF7F2',
-  theme_color: '#7EB89A',
-  lang: 'zh-CN',
-  icons: [
-    { src: 'data:image/svg+xml;base64,' + btoa(iconSvg), sizes: '512x512', type: 'image/svg+xml', purpose: 'any maskable' }
-  ]
-};
-var blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
-var link = document.createElement('link');
-link.rel = 'manifest';
-link.href = URL.createObjectURL(blob);
-document.head.appendChild(link);
+  /* ===================== 个人资料编辑 ===================== */
+  // 头像完整数据（含背景色，与 auth.html 一致）
+  var AVATAR_FULL = [
+    { emoji:'🌸', bg:'#FFE4E1' }, { emoji:'🌿', bg:'#E8F5E9' },
+    { emoji:'☀️', bg:'#FFF8E1' }, { emoji:'🌙', bg:'#E3F2FD' },
+    { emoji:'⭐', bg:'#FFF3E0' }, { emoji:'🦋', bg:'#E0F7FA' }
+  ];
 
-// 注册 Service Worker（离线缓存核心页面）
-if ('serviceWorker' in navigator) {
-  var swCode = 'self.addEventListener("install",function(e){e.waitUntil(caches.open("yl-v8").then(function(c){return c.addAll(["/"])}))});' +
-    'self.addEventListener("fetch",function(e){e.respondWith(caches.match(e.request).then(function(r){return r||fetch(e.request)}))});';
-  var swBlob = new Blob([swCode], { type: 'application/javascript' });
-  var swUrl = URL.createObjectURL(swBlob);
-  navigator.serviceWorker.register(swUrl, { scope: '/' }).then(function(reg) {
-    console.log('[PWA] Service Worker 已注册');
-  }).catch(function() {});
-}
+  function openProfileEditor() {
+    var profile = getUserProfile();
+    var overlay = document.getElementById('profileOverlay');
+    if (!overlay) return;
 
-// 监听安装事件
-var deferredPrompt = null;
-window.addEventListener('beforeinstallprompt', function(e) {
-  e.preventDefault();
-  deferredPrompt = e;
-  // 延迟 3 秒后提示安装
-  setTimeout(function() {
-    if (deferredPrompt && !window.matchMedia('(display-mode: standalone)').matches) {
-      deferredPrompt.prompt();
-      deferredPrompt.userChoice.then(function() { deferredPrompt = null; });
+    // 构建头像选择器
+    var ai = profile.avatar_idx !== undefined ? profile.avatar_idx : 0;
+    var html = '';
+    AVATAR_FULL.forEach(function(a, i) {
+      var sel = i === ai ? ' selected' : '';
+      html += '<div class="avatar-option' + sel + '" data-idx="' + i +
+        '" style="background:' + a.bg + '" onclick="selectProfileAvatar(this, ' + i + ')" title="头像' + (i+1) + '">' +
+        a.emoji + '</div>';
+    });
+    var picker = document.getElementById('profileAvatarPicker');
+    if (picker) picker.innerHTML = html;
+
+    // 填入当前值
+    var setVal = function(id, val) { var el = document.getElementById(id); if (el && val !== null && val !== undefined) el.value = val; };
+    setVal('profileAvatarIdx', ai);
+    setVal('profileNickname', profile.nickname || '');
+    setVal('profileGender', profile.gender || '');
+    setVal('profilePhone', profile.phone || '');
+    setVal('profileEmail', profile.email || '');
+    setVal('profileBirthday', profile.birthday || '');
+    setVal('profileHeight', profile.height || '');
+
+    var errEl = document.getElementById('profileError');
+    if (errEl) errEl.textContent = '';
+
+    // 初始化自定义头像
+    pendingAvatarUrl = null;
+    var avatarUrl = profile.avatar_url || '';
+    var urlInput = document.getElementById('profileAvatarUrl');
+    if (urlInput) urlInput.value = avatarUrl;
+    var clearBtn = document.getElementById('profileAvatarClearBtn');
+    if (clearBtn) clearBtn.style.display = avatarUrl ? '' : 'none';
+
+    overlay.style.display = 'flex';
+    updateAvatarPreview();
+  }
+
+  function selectProfileAvatar(el, idx) {
+    document.querySelectorAll('#profileAvatarPicker .avatar-option').forEach(function(o) { o.classList.remove('selected'); });
+    el.classList.add('selected');
+    document.getElementById('profileAvatarIdx').value = idx;
+    // 选择 emoji 头像时清除自定义上传
+    pendingAvatarUrl = null;
+    document.getElementById('profileAvatarUrl').value = '';
+    var clearBtn = document.getElementById('profileAvatarClearBtn');
+    if (clearBtn) clearBtn.style.display = 'none';
+    updateAvatarPreview();
+  }
+
+  function closeProfileEditor() {
+    var overlay = document.getElementById('profileOverlay');
+    if (overlay) overlay.style.display = 'none';
+  }
+
+  // 点击遮罩关闭
+  (function() {
+    var overlay = document.getElementById('profileOverlay');
+    if (overlay) overlay.addEventListener('click', function(e) { if (e.target === e.currentTarget) closeProfileEditor(); });
+  })();
+
+  function saveProfileChanges() {
+    var errEl = document.getElementById('profileError');
+    var val = function(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; };
+
+    var avatarIdx = parseInt(document.getElementById('profileAvatarIdx').value) || 0;
+    var avatarUrl = document.getElementById('profileAvatarUrl').value.trim() || oldProfile.avatar_url || '';
+    var nickname = val('profileNickname');
+    var gender = val('profileGender');
+    var phone = val('profilePhone').replace(/\D/g, '');
+    var email = val('profileEmail');
+    var birthday = val('profileBirthday');
+    var heightStr = val('profileHeight');
+    var height = heightStr ? parseFloat(heightStr) : null;
+
+    if (!nickname) { if (errEl) errEl.textContent = '请输入昵称'; return; }
+    if (nickname.length > 16) { if (errEl) errEl.textContent = '昵称最多16个字符'; return; }
+
+    var oldProfile = getUserProfile();
+    var newProfile = {
+      nickname: nickname,
+      avatar_idx: avatarIdx,
+      avatar_url: avatarUrl,
+      avatar_emoji: AVATAR_FULL[avatarIdx].emoji,
+      avatar_bg: AVATAR_FULL[avatarIdx].bg,
+      gender: gender,
+      phone: phone || oldProfile.phone || '',
+      email: email || oldProfile.email || '',
+      birthday: birthday || oldProfile.birthday || null,
+      height: height !== null ? height : (oldProfile.height || null),
+      session_key: oldProfile.session_key || '',
+      created_at: oldProfile.created_at || '',
+      updated_at: new Date().toISOString()
+    };
+
+    // 更新本地
+    var authData = localStorage.getItem('wb_auth_data');
+    if (authData) {
+      try {
+        var parsed = JSON.parse(authData);
+        parsed.profile = newProfile;
+        parsed.last_active = Date.now();
+        localStorage.setItem('wb_auth_data', JSON.stringify(parsed));
+      } catch(e) {}
     }
-  }, 3000);
-});
-window.addEventListener('appinstalled', function() {
-  deferredPrompt = null;
-});
-})();
+
+    // 更新全局
+    window.__profile = newProfile;
+
+    // 异步上传到云端 profile store
+    var userId = getUserId();
+    if (userId && syncConfig) {
+      sbFetch(syncConfig, 'POST', 'sync_store', {
+        group_key: 'profile_' + userId,
+        store: 'wb_user_profile',
+        data: newProfile,
+        updated_at: new Date().toISOString()
+      }, 'Prefer: resolution=merge-duplicates').then(function() {
+        // 如果手机号变了，更新 phone lookup
+        if (phone && phone !== oldProfile.phone) {
+          return sbFetch(syncConfig, 'POST', 'sync_store', {
+            group_key: 'profile_by_phone_' + phone,
+            store: 'wb_profile_lookup',
+            data: {
+              user_id: userId,
+              email: email || oldProfile.email,
+              session_key: newProfile.session_key,
+              password_hash: oldProfile.password_hash || ''
+            },
+            updated_at: new Date().toISOString()
+          });
+        }
+      }).catch(function(e) {
+        console.log('云端 profile 更新失败:', e.message);
+      });
+    }
+
+    // 刷新 UI
+    renderHead();
+    closeProfileEditor();
+    toast('个人资料已更新 ✅');
+  }
+
+  // ============ 自定义头像上传 ============
+  var pendingAvatarUrl = null;
+
+  function handleAvatarUpload(input) {
+    var file = input.files && input.files[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { toast('图片不能超过 2MB'); input.value = ''; return; }
+    if (!file.type.match(/^image\/(jpeg|png|webp|gif)$/)) { toast('仅支持 JPG/PNG/WebP/GIF'); input.value = ''; return; }
+
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      pendingAvatarUrl = e.target.result;
+      // 更新预览
+      updateAvatarPreview();
+      // 取消 emoji 选中
+      document.querySelectorAll('#profileAvatarPicker .avatar-option').forEach(function(o) { o.classList.remove('selected'); });
+      document.getElementById('profileAvatarUrl').value = pendingAvatarUrl;
+      // 显示/隐藏清除按钮
+      var clearBtn = document.getElementById('profileAvatarClearBtn');
+      if (clearBtn) clearBtn.style.display = '';
+    };
+    reader.readAsDataURL(file);
+    input.value = '';
+  }
+
+  function clearCustomAvatar() {
+    pendingAvatarUrl = null;
+    document.getElementById('profileAvatarUrl').value = '';
+    updateAvatarPreview();
+    var clearBtn = document.getElementById('profileAvatarClearBtn');
+    if (clearBtn) clearBtn.style.display = 'none';
+    // 恢复 emoji 选中
+    var ai = parseInt(document.getElementById('profileAvatarIdx').value) || 0;
+    var opts = document.querySelectorAll('#profileAvatarPicker .avatar-option');
+    opts.forEach(function(o, i) { o.classList.toggle('selected', i === ai); });
+  }
+
+  function updateAvatarPreview() {
+    var preview = document.getElementById('profileAvatarPreview');
+    if (!preview) return;
+    var url = pendingAvatarUrl || document.getElementById('profileAvatarUrl').value;
+    if (url) {
+      preview.innerHTML = '<img src="' + url + '" style="width:100%;height:100%;object-fit:cover" alt="头像预览">';
+    } else {
+      var profile = getUserProfile();
+      var ai = parseInt(document.getElementById('profileAvatarIdx').value) || profile.avatar_idx || 0;
+      if (ai >= 0 && ai < AVATAR_FULL.length) {
+        var a = AVATAR_FULL[ai];
+        preview.innerHTML = '<span style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;background:' + a.bg + ';font-size:28px">' + a.emoji + '</span>';
+      }
+    }
+  }
