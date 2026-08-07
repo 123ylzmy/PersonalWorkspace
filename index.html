@@ -9,15 +9,17 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="樱苓工作台">
+  <meta name="apple-mobile-web-app-title" content="自洽日程">
   <!-- PWA Manifest -->
   <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="shortcut icon" href="favicon.ico">
   <!-- iOS 主屏图标 -->
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" sizes="512x512" href="icons/icon-512.png">
   <!-- 主题色（Android 状态栏 + PWA 标题栏） -->
   <meta name="theme-color" content="#7EB89A">
-  <title>樱苓的日常记录</title>
+  <title>自洽日程</title>
   <link rel="stylesheet" href="index.css">
 </head>
 
@@ -26,8 +28,8 @@
     <!-- ===== 侧边栏 ===== -->
     <aside class="sidebar" id="sidebar">
       <div class="side-logo">
-        <div class="dot">樱</div>
-        <div class="name">樱苓的日常记录<small>· 记录每一天</small></div>
+        <img src="icons/icon-192.png" class="dot" style="width:32px;height:32px;border-radius:10px;object-fit:cover;flex-shrink:0;" alt="自洽日程">
+        <div class="name">自洽日程<small>· 记录每一天</small></div>
       </div>
       <nav class="side-nav">
         <div class="side-nav-item active" data-tab="today" onclick="switchPage(&#39;today&#39;)">
@@ -73,7 +75,7 @@
       <header class="topbar">
         <div class="topbar-main">
           <div>
-            <div class="greet" id="greetLine">中午好，<b>樱苓</b> <span class="mood-wrap" style="margin-left:2px"><span
+            <div class="greet" id="greetLine">欢迎使用自洽日程<span class="mood-wrap" style="margin-left:2px"><span
                   class="mood-trigger" id="moodIcon" onclick="toggleMoodPanel(event)" title="心情：平静（点击选择）"><svg
                     id="moodIconSvg" viewBox="0 0 24 24" width="22" height="22" style="color: rgb(168, 216, 234);">
                     <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.5"></circle>
@@ -205,14 +207,12 @@
             </svg>
           </button>
           <span class="sync-indicator offline" id="syncIndicator" style="margin-right:4px">
-            <span class="sync-dot" id="syncDot"></span>
-            <span id="syncLabel">未配置</span>
+            <span class="sync-dot" id="syncDot" title="云同步状态"></span>
           </span>
-          <button class="topbar-btn cloud-btn" id="cloudBtn" onclick="toggleCloudPanel()" title="云同步登录" style="background:var(--g50);color:var(--g400);font-weight:500;gap:4px;border:1.5px solid var(--g200)">
+          <button class="topbar-btn cloud-btn" id="cloudBtn" onclick="toggleCloudPanel()" title="云同步" style="background:var(--g50);color:var(--g400);border:1.5px solid var(--g200)">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
               <path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z"></path>
             </svg>
-            <span class="cloud-label">云同步</span>
           </button>
           <button class="topbar-btn" id="logoutBtn" onclick="handleLogout()" title="退出登录" style="color:var(--danger);margin-left:4px">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
@@ -220,7 +220,6 @@
               <polyline points="16 17 21 12 16 7"></polyline>
               <line x1="21" y1="12" x2="9" y2="12"></line>
             </svg>
-            <span class="cloud-label">退出</span>
           </button>
         </div>
       </header>
@@ -436,6 +435,20 @@
             </div>
 
             <div class="today-right">
+              <!-- 每日心灵语录 -->
+              <div class="card soul-card" id="soulCard" style="background:linear-gradient(135deg,var(--g50) 0%,var(--bg) 100%);border-left:3px solid var(--g400)">
+                <div class="card-bd" style="padding:14px 16px">
+                  <div style="display:flex;align-items:flex-start;gap:10px">
+                    <span style="font-size:20px;flex-shrink:0">✨</span>
+                    <div style="flex:1">
+                      <div style="font-size:12px;font-weight:600;color:var(--g400);margin-bottom:4px">此刻 · 心灵语录</div>
+                      <div id="soulQuote" style="font-size:14px;line-height:1.6;color:var(--ink);font-weight:500"></div>
+                    </div>
+                    <span class="fn-btn" onclick="refreshSoulQuote()" title="换一句" style="flex-shrink:0;font-size:11px">🔄</span>
+                  </div>
+                </div>
+              </div>
+
               <!-- 今日要处理 -->
               <div class="card">
                 <div class="card-hd">
@@ -843,7 +856,7 @@
             <div class="card">
               <div class="card-hd"><span class="dot g"></span>训练计划
                 <span class="hd-date" id="trainHdDate">· 8/3 - 8/9（本周）</span>
-                <a class="subtle-link" onclick="openPeriodModal()" title="记录姨妈期">记录姨妈</a>
+                <a class="subtle-link" id="periodLink" onclick="openPeriodModal()" title="记录姨妈期" style="display:none">记录姨妈</a>
                 <button class="add-btn" onclick="openTrainModal()">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
                     stroke-linejoin="round">
@@ -1178,50 +1191,77 @@
     </div>
   </div>
 
-  <!-- 云同步：邮箱验证码登录弹窗 -->
-  <!-- 云同步设置弹窗 -->
-  <div class="auth-modal-overlay" id="authOverlay" style="display:none">
-    <div class="auth-modal" style="max-width:420px;text-align:left">
-      <h3 style="text-align:center">☁️ 云端同步设置</h3>
-      <p class="sub" style="text-align:center">两端填写相同的同步码即可实时互通<br>未配置时 App 完全按本地模式运行</p>
+  <!-- ============ 个人资料编辑弹窗 ============ -->
+  <div class="auth-modal-overlay" id="profileOverlay" style="display:none">
+    <div class="auth-modal" style="max-width:440px;text-align:left">
+      <h3 style="text-align:center">👤 个人资料</h3>
+      <p class="sub" style="text-align:center;margin-bottom:16px">修改后自动同步到云端，所有设备更新</p>
 
-      <div style="margin-bottom:10px">
-        <label style="font-size:12px;color:var(--g400)">Supabase 项目 URL</label>
-        <input type="text" id="syncUrl" placeholder="https://xxxx.supabase.co" value="https://dyvzxlntyqebblewpihj.supabase.co" style="margin-top:4px">
+      <!-- 头像 -->
+      <div class="form-group" style="margin-bottom:12px">
+        <label style="font-size:12px;color:var(--g400);margin-bottom:6px;display:block">头像</label>
+        <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:8px">
+          <div id="profileAvatarPreview" style="width:56px;height:56px;border-radius:50%;overflow:hidden;flex-shrink:0;border:2px solid var(--line)"></div>
+          <div style="flex:1">
+            <button class="btn-ghost" style="width:100%;margin-bottom:4px;font-size:12px;padding:6px 10px" onclick="document.getElementById('avatarFileInput').click()">📷 上传图片</button>
+            <button class="btn-ghost" style="width:100%;font-size:12px;padding:6px 10px;color:var(--g300)" id="profileAvatarClearBtn" onclick="clearCustomAvatar()">↩ 使用默认头像</button>
+            <input type="file" id="avatarFileInput" accept="image/*" style="display:none" onchange="handleAvatarUpload(this)">
+          </div>
+        </div>
+        <div class="avatar-picker" id="profileAvatarPicker" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+        <input type="hidden" id="profileAvatarIdx" value="0">
+        <input type="hidden" id="profileAvatarUrl" value="">
       </div>
-
-      <div style="margin-bottom:10px">
-        <label style="font-size:12px;color:var(--g400)">Anon Key（公开键，非 secret）</label>
-        <input type="text" id="syncKey" placeholder="eyJ... 公开 anon key" value="sb_publishable_kSGB8khWFcMSemqJ1m6Rxw_pI4gGrhc" style="margin-top:4px">
-      </div>
-
-      <div style="margin-bottom:10px">
-        <label style="font-size:12px;color:var(--g400)">同步码（两端一致）</label>
-        <input type="text" id="syncCode" placeholder="自定义，例如 yingling2026" style="margin-top:4px">
-      </div>
-
-      <div class="auth-error" id="authError"></div>
 
       <div style="display:flex;gap:10px;margin-bottom:12px">
-        <button class="btn ghost" onclick="testSyncConnection()" style="flex:1;justify-content:center;gap:4px">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-          连接测试
-        </button>
-        <button class="btn" onclick="syncNowFromSettings('upload')" style="flex:1;justify-content:center;gap:4px;background:var(--c300);color:#fff">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
-          上传到云端
-        </button>
-        <button class="btn ghost" onclick="syncNowFromSettings('download')" style="flex:1;justify-content:center;gap:4px" title="从云端下载数据到本地（会覆盖本地数据）">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          从云端加载
-        </button>
+        <div style="flex:1">
+          <label style="font-size:12px;color:var(--g400);display:block;margin-bottom:4px">昵称</label>
+          <input type="text" id="profileNickname" placeholder="你的昵称" maxlength="16" style="width:100%;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:14px;background:var(--input-bg);color:var(--text);outline:none">
+        </div>
+        <div style="flex:1">
+          <label style="font-size:12px;color:var(--g400);display:block;margin-bottom:4px">性别</label>
+          <input type="hidden" id="profileGender" value="">
+          <div class="ex-dropdown" id="genderDropdown">
+            <div class="ex-dropdown-btn" id="genderBtn" onclick="toggleGenderDropdown(event)" style="padding:8px 10px;min-height:auto;border-radius:8px">
+              <span id="genderBtnText">请选择</span>
+              <span class="ex-dropdown-arrow">&#9660;</span>
+            </div>
+            <div class="ex-dropdown-panel" id="genderPanel">
+              <div class="ex-panel-item sel" onclick="selectGender('female')" data-g="female">女</div>
+              <div class="ex-panel-item" onclick="selectGender('male')" data-g="male">男</div>
+              <div class="ex-panel-item" onclick="selectGender('other')" data-g="other">其他</div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div id="syncStatusRow" style="font-size:12px;color:var(--ink-soft);text-align:center;margin-bottom:12px;display:none"></div>
+      <div style="display:flex;gap:10px;margin-bottom:12px">
+        <div style="flex:1">
+          <label style="font-size:12px;color:var(--g400);display:block;margin-bottom:4px">手机号</label>
+          <input type="tel" id="profilePhone" placeholder="138xxxx8888" style="width:100%;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:14px;background:var(--input-bg);color:var(--text);outline:none">
+        </div>
+        <div style="flex:1">
+          <label style="font-size:12px;color:var(--g400);display:block;margin-bottom:4px">邮箱（找回密码用）</label>
+          <input type="email" id="profileEmail" placeholder="your@email.com" style="width:100%;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:14px;background:var(--input-bg);color:var(--text);outline:none">
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-bottom:12px">
+        <div style="flex:1">
+          <label style="font-size:12px;color:var(--g400);display:block;margin-bottom:4px">生日</label>
+          <input type="date" id="profileBirthday" style="width:100%;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:14px;background:var(--input-bg);color:var(--text);outline:none">
+        </div>
+        <div style="flex:1">
+          <label style="font-size:12px;color:var(--g400);display:block;margin-bottom:4px">身高 (cm)</label>
+          <input type="number" id="profileHeight" placeholder="165" min="100" max="250" step="1" style="width:100%;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:14px;background:var(--input-bg);color:var(--text);outline:none">
+        </div>
+      </div>
+
+      <div id="profileError" style="font-size:12px;color:var(--danger);text-align:center;margin-bottom:8px;min-height:18px"></div>
 
       <div class="btn-row" style="border-top:1px solid var(--line);padding-top:12px;margin-top:0">
-        <button class="btn-ghost" onclick="closeAuth()">关闭</button>
-        <button class="btn-primary" onclick="saveSyncConfig()">保存配置</button>
+        <button class="btn-ghost" onclick="closeProfileEditor()">取消</button>
+        <button class="btn-primary" onclick="saveProfileChanges()">保存修改</button>
       </div>
     </div>
   </div>
@@ -1236,20 +1276,61 @@
 (function() {
   var SUPABASE_URL = "https://dyvzxlntyqebblewpihj.supabase.co";
   var SUPABASE_KEY = "sb_publishable_kSGB8khWFcMSemqJ1m6Rxw_pI4gGrhc";
+  var SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 
-  // 获取存储的 session
-  var sessionData = localStorage.getItem("sb_session") || sessionStorage.getItem("sb_session");
-  if (!sessionData) {
-    window.location.replace("auth.html");
-    return;
+  // 读取新版 auth data
+  var authStr = localStorage.getItem("wb_auth_data");
+  if (!authStr) {
+    // 兼容旧版 sb_session
+    var oldSession = localStorage.getItem("sb_session") || sessionStorage.getItem("sb_session");
+    if (!oldSession) { window.location.replace("auth.html"); return; }
+    try {
+      var old = JSON.parse(oldSession);
+      if (old && old.access_token && old.user) {
+        // 迁移到新版格式
+        var profile = old.user.user_metadata || {};
+        if (!profile.nickname) profile.nickname = (old.user.email || "").split("@")[0];
+        if (profile.avatar_idx === undefined) profile.avatar_idx = 0;
+        authStr = JSON.stringify({
+          session: old,
+          profile: profile,
+          last_active: Date.now()
+        });
+        localStorage.setItem("wb_auth_data", authStr);
+        localStorage.removeItem("sb_session");
+      } else {
+        window.location.replace("auth.html"); return;
+      }
+    } catch(e) { window.location.replace("auth.html"); return; }
   }
 
   try {
-    var session = JSON.parse(sessionData);
+    var auth = JSON.parse(authStr);
+    var session = auth.session;
 
-    // 检查是否过期
+    // 检查7天未活跃 → 重新登录
+    if (!auth.last_active || (Date.now() - auth.last_active) >= SEVEN_DAYS) {
+      localStorage.removeItem("wb_auth_data");
+      localStorage.removeItem("sb_session");
+      sessionStorage.removeItem("sb_session");
+      window.location.replace("auth.html");
+      return;
+    }
+
+    // 更新活跃时间
+    auth.last_active = Date.now();
+    localStorage.setItem("wb_auth_data", JSON.stringify(auth));
+
+    // 检查 token 是否过期
     if (session.expires_at && session.expires_at < Date.now() / 1000) {
-      // 尝试用 refresh_token 刷新
+      if (session._local) {
+        // 本地自签 session 过期 → 直接回到登录页
+        console.log('[Auth] Local session expired, redirecting to login');
+        localStorage.removeItem("wb_auth_data");
+        window.location.replace("auth.html");
+        return;
+      }
+      // 尝试刷新 Supabase token（旧版兼容）
       fetch(SUPABASE_URL + "/auth/v1/token?grant_type=refresh_token", {
         method: "POST",
         headers: { "apikey": SUPABASE_KEY, "Content-Type": "application/json" },
@@ -1257,34 +1338,25 @@
       }).then(function(res) { return res.json(); })
         .then(function(data) {
           if (data.access_token) {
-            var newSession = {
-              access_token: data.access_token,
-              refresh_token: data.refresh_token,
-              expires_at: Math.floor(Date.now() / 1000) + data.expires_in,
-              user: session.user
-            };
-            // 更新存储
-            if (localStorage.getItem("sb_session")) {
-              localStorage.setItem("sb_session", JSON.stringify(newSession));
-            } else {
-              sessionStorage.setItem("sb_session", JSON.stringify(newSession));
-            }
-            // 暴露到全局
-            window.__auth = newSession;
+            session.access_token = data.access_token;
+            session.refresh_token = data.refresh_token;
+            session.expires_at = Math.floor(Date.now() / 1000) + data.expires_in;
+            auth.session = session;
+            auth.last_active = Date.now();
+            localStorage.setItem("wb_auth_data", JSON.stringify(auth));
+            window.__auth = session;
+            window.__profile = auth.profile;
           } else {
-            localStorage.removeItem("sb_session");
-            sessionStorage.removeItem("sb_session");
+            localStorage.removeItem("wb_auth_data");
             window.location.replace("auth.html");
           }
-        }).catch(function() {
-          window.location.replace("auth.html");
-        });
+        }).catch(function() { window.location.replace("auth.html"); });
     } else {
       window.__auth = session;
+      window.__profile = auth.profile || {};
     }
   } catch(e) {
-    localStorage.removeItem("sb_session");
-    sessionStorage.removeItem("sb_session");
+    localStorage.removeItem("wb_auth_data");
     window.location.replace("auth.html");
   }
 })();
