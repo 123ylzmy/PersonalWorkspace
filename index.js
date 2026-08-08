@@ -637,11 +637,10 @@
   }
   function selectMood(v, e) {
     if (e) { e.stopPropagation(); e.preventDefault(); }
+    closeMoodPanel();          // 先同步关闭面板，避免依赖异步时序（WebView/桌面行为一致）
     state.mood.value = v;
     state.mood.date = today();
-    save(); renderMoodIcon();
-    // 用 setTimeout 确保在移动端触摸事件链完成后关闭面板，避免事件冲突
-    setTimeout(function () { closeMoodPanel(); }, 0);
+    save(); renderMoodIcon();   // 重建面板内容，不重新添加 .show，保持关闭
     var cfg = getMoodCfg(v);
     toast('心情：' + cfg.label);
   }
@@ -3882,7 +3881,7 @@
     var height = heightStr ? parseFloat(heightStr) : null;
 
     if (!nickname) { if (errEl) errEl.textContent = '请输入昵称'; return; }
-    if (nickname.length > 16) { if (errEl) errEl.textContent = '昵称最多16个字符'; return; }
+    if (nickname.length > 7) { if (errEl) errEl.textContent = '昵称最多7个字符'; return; }
 
     var oldProfile = getUserProfile();
     var newProfile = {
@@ -3924,20 +3923,7 @@
         data: newProfile,
         updated_at: new Date().toISOString()
       }, 'Prefer: resolution=merge-duplicates').then(function() {
-        // 如果手机号变了，更新 phone lookup
-        if (phone && phone !== oldProfile.phone) {
-          return sbFetch(syncConfig, 'POST', 'sync_store', {
-            group_key: 'profile_by_phone_' + phone,
-            store: 'wb_profile_lookup',
-            data: {
-              user_id: userId,
-              email: email || oldProfile.email,
-              session_key: newProfile.session_key,
-              password_hash: oldProfile.password_hash || ''
-            },
-            updated_at: new Date().toISOString()
-          });
-        }
+        // 登录标识已改为账户名称（注册时写入 profile_by_name_），编辑资料不再维护旧的手机号登录映射
       }).catch(function(e) {
         console.log('云端 profile 更新失败:', e.message);
       });
