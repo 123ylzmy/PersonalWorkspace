@@ -1,10 +1,10 @@
-// 樱苓工作台 Service Worker v2
-const CACHE_NAME = 'yl-workbench-v2';
+// 自洽日程 Service Worker v4
+const CACHE_NAME = 'yl-workbench-v4';
 const ASSETS = [
   '/',
   '/index.html',
-  '/index.css',
-  '/index.js',
+  '/index.min.css',
+  '/index.min.js',
   '/data.json',
   '/manifest.json',
   '/icons/icon.svg',

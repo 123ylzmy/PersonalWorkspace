@@ -1,4 +1,5 @@
 /* ===================== 认证 ===================== */
+  var APP_VERSION = '20260809';
   // 解析 sync_store 返回的 data 字段（兼容 JSONB 对象和 TEXT 字符串）
   function parseStoreData(d) {
     if (!d) return null;
@@ -364,29 +365,28 @@
 
   /* ===================== 每日人民日报阅读 ===================== */
   // 人民日报风格每日文摘（原创正能量短句，非官方原文，规避版权风险）
-  // 每篇带 u 字段：点「阅读原文」跳转人民网对应主题频道（真实文章栏目页）
-  // 说明：无真实原文版权，链接指向人民网各频道栏目；如需某篇对应真实原文，替换 u 即可
+  // 「阅读原文」统一跳转人民网首页（原始跳转链接），规避各频道子域 403 拦截
   const RMRB_QUOTES = [
-    { t: "时代呼唤担当，民族振兴是青年的责任。", u: "https://theory.people.com.cn/" },
-    { t: "把每一件小事做好，就是不平凡的开始。", u: "https://society.people.com.cn/" },
-    { t: "前进的道路从不会一帆风顺，但脚下的每一步都算数。", u: "https://politics.people.com.cn/" },
-    { t: "脚下有多少泥土，心中就沉淀多少真情。", u: "https://society.people.com.cn/" },
-    { t: "梦想不会发光，发光的是那个追梦的你。", u: "https://culture.people.com.cn/" },
-    { t: "越是艰难处，越是修心时。", u: "https://theory.people.com.cn/" },
-    { t: "平凡铸就伟大，英雄来自人民。", u: "https://society.people.com.cn/" },
-    { t: "星光不问赶路人，时光不负有心人。", u: "https://culture.people.com.cn/" },
-    { t: "扎根泥土，才能遇见更广阔的世界。", u: "https://politics.people.com.cn/" },
-    { t: "读懂中国，从读懂身边的烟火气开始。", u: "https://www.people.com.cn/" },
-    { t: "每一代人有每一代人的长征，每一代人有每一代人的担当。", u: "https://theory.people.com.cn/" },
-    { t: "把青春融进时代的洪流，把脚印刻在祖国的大地。", u: "https://culture.people.com.cn/" },
-    { t: "心中有信仰，脚下有力量。", u: "https://theory.people.com.cn/" },
-    { t: "国家发展的大逻辑，藏在每一个普通人的日子里。", u: "https://finance.people.com.cn/" },
-    { t: "从容于心，从容于行，方能行稳致远。", u: "https://culture.people.com.cn/" },
-    { t: "与其焦虑明天，不如把今天过成想要的模样。", u: "https://society.people.com.cn/" },
-    { t: "读懂人民，才能读懂这个时代。", u: "https://www.people.com.cn/" },
-    { t: "一滴水只有放进大海里，才永远不会干涸。", u: "https://society.people.com.cn/" },
-    { t: "把时间花在哪里，哪里就会开花结果。", u: "https://edu.people.com.cn/" },
-    { t: "生活的答案，往往藏在日复一日的坚持里。", u: "https://edu.people.com.cn/" }
+    "时代呼唤担当，民族振兴是青年的责任。",
+    "把每一件小事做好，就是不平凡的开始。",
+    "前进的道路从不会一帆风顺，但脚下的每一步都算数。",
+    "脚下有多少泥土，心中就沉淀多少真情。",
+    "梦想不会发光，发光的是那个追梦的你。",
+    "越是艰难处，越是修心时。",
+    "平凡铸就伟大，英雄来自人民。",
+    "星光不问赶路人，时光不负有心人。",
+    "扎根泥土，才能遇见更广阔的世界。",
+    "读懂中国，从读懂身边的烟火气开始。",
+    "每一代人有每一代人的长征，每一代人有每一代人的担当。",
+    "把青春融进时代的洪流，把脚印刻在祖国的大地。",
+    "心中有信仰，脚下有力量。",
+    "国家发展的大逻辑，藏在每一个普通人的日子里。",
+    "从容于心，从容于行，方能行稳致远。",
+    "与其焦虑明天，不如把今天过成想要的模样。",
+    "读懂人民，才能读懂这个时代。",
+    "一滴水只有放进大海里，才永远不会干涸。",
+    "把时间花在哪里，哪里就会开花结果。",
+    "生活的答案，往往藏在日复一日的坚持里。"
   ];
   var _rmrbIdx = -1;
   var _rmrbKey = 'wb_rmrb_idx';
@@ -413,10 +413,7 @@
     }
     _rmrbIdx = idx;
     rmrbSaveIdx(idx);
-    var item = RMRB_QUOTES[idx];
-    el.textContent = item.t;
-    var link = document.getElementById('rmrbLink');
-    if (link) link.href = item.u;
+    el.textContent = RMRB_QUOTES[idx];
   }
   // 手动切换到另一篇（与当前不同）
   function refreshRMRB() {
@@ -799,16 +796,29 @@
     document.querySelectorAll('.side-nav-item,.bn-item').forEach(x => x.classList.toggle('active', x.dataset.tab === p));
     if (p !== 'study' && studyTimer.running) { pauseStudyTimer() }
     renderAll();
+    var main = document.querySelector('.main'); if (main) main.scrollTo({ top: 0, behavior: 'instant' });
   }
 
   /* ===================== 今日页面 ===================== */
   function renderToday() {
     var td = today(), vd = todoViewDate;
-    var items = state.todos.filter(function (t) { return t.date === vd });
+    // 判断待办在指定日期是否显示、以及是否已完成
+    function todoVisibleOn(t, dateStr) {
+      if (t.isRepeat && t.repeatDates) return t.repeatDates.indexOf(dateStr) >= 0;
+      return t.date === dateStr;
+    }
+    function todoDoneOn(t, dateStr) {
+      if (t.isRepeat && t.doneBy) return !!t.doneBy[dateStr];
+      return !!t.done;
+    }
+    var items = state.todos.filter(function (t) { return todoVisibleOn(t, vd) });
     var overdue = [];
-    if (vd === td) { overdue = state.todos.filter(function (t) { return !t.done && t.date < td }); }
-    var active = items.filter(function (t) { return !t.done });
-    var done = items.filter(function (t) { return t.done });
+    if (vd === td) {
+      // 逾期仅限单日待办（循环待办每天自然循环，不算逾期）
+      overdue = state.todos.filter(function (t) { return !t.isRepeat && !t.done && t.date < td });
+    }
+    var active = items.filter(function (t) { return !todoDoneOn(t, vd) });
+    var done = items.filter(function (t) { return todoDoneOn(t, vd) });
 
     var vdObj = new Date(vd);
     var wk = ['日', '一', '二', '三', '四', '五', '六'][vdObj.getDay()];
@@ -847,16 +857,19 @@
     }
 
     function renderItem(t) {
-      var ov = t.date < td;
+      var isRepeat = !!(t.isRepeat && t.repeatDates && t.repeatDates.length);
+      var doneOnVd = todoDoneOn(t, vd);
+      var ov = !isRepeat && t.date < td;
       var typeLabel = todoTypeLabel(t.type);
+      var repeatBadge = isRepeat ? '<span class="repeat-badge">🔁</span>' : '';
       var actBtns = '<div class="today-act-group">' +
         '<span class="today-act-icon" onclick="editTodo(\'' + t.id + '\')" title="编辑"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></span>' +
         '<span class="today-act-icon del" onclick="delTodo(\'' + t.id + '\')" title="删除"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></span>' +
         (ov ? '<span class="today-act-move" onclick="moveTodo(\'' + t.id + '\')">顺延</span>' : '') +
         '</div>';
-      return '<div class="today-item ' + (ov ? 'overdue' : '') + '">' +
+      return '<div class="today-item ' + (ov ? 'overdue' : '') + (doneOnVd ? ' done' : '') + '">' +
         '<div class="today-cb" onclick="finishTodo(\'' + t.id + '\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>' +
-        '<div class="today-txt">' + (typeLabel ? '<span style="font-size:9px;padding:1px 5px;border-radius:6px;background:var(' + (TODO_TYPES.find(function (x) { return x.id === t.type }) || { bg: '--bg' }).bg + ');color:var(' + (TODO_TYPES.find(function (x) { return x.id === t.type }) || { color: '--ink-light' }).color + ');margin-right:4px;vertical-align:middle">' + typeLabel + '</span>' : '') + esc(t.text) + '<small>' + (ov ? '⚠ 逾期（' + t.date + '）' : vd === td ? '今天' : vd) + '</small></div>' +
+        '<div class="today-txt">' + repeatBadge + (typeLabel ? '<span style="font-size:9px;padding:1px 5px;border-radius:6px;background:var(' + (TODO_TYPES.find(function (x) { return x.id === t.type }) || { bg: '--bg' }).bg + ');color:var(' + (TODO_TYPES.find(function (x) { return x.id === t.type }) || { color: '--ink-light' }).color + ');margin-right:4px;vertical-align:middle">' + typeLabel + '</span>' : '') + esc(t.text) + '<small>' + (ov ? '⚠ 逾期（' + t.date + '）' : isRepeat ? '循环' : (vd === td ? '今天' : vd)) + '</small></div>' +
         actBtns +
         '</div>';
     }
@@ -897,7 +910,7 @@
     renderWorkTasks('todayTasks');
     renderCalendar();
 
-    var allOverdue = state.todos.filter(function (t) { return !t.done && t.date < td }).length
+    var allOverdue = state.todos.filter(function (t) { return !t.isRepeat && !t.done && t.date < td }).length
       + state.workTasks.filter(function (t) { return !t.done && t.deadline < td }).length;
     var b = document.getElementById('todayBadge');
     if (b) b.style.display = allOverdue ? 'inline' : 'none';
@@ -907,11 +920,29 @@
   /* 待办操作 */
   function finishTodo(id) {
     var t = state.todos.find(function (x) { return x.id === id });
-    if (t) { t.done = true; save(); renderAll(); toast('完成 ✓') }
+    if (!t) return;
+    var vd = todoViewDate;
+    if (t.isRepeat && t.repeatDates) {
+      // 循环待办：按当天切换完成态（每天独立）
+      t.doneBy = t.doneBy || {};
+      if (t.doneBy[vd]) { delete t.doneBy[vd]; toast('已撤销') }
+      else { t.doneBy[vd] = true; toast('完成 ✓') }
+    } else {
+      t.done = true; toast('完成 ✓')
+    }
+    save(); renderAll();
   }
   function undoTodo(id) {
     var t = state.todos.find(function (x) { return x.id === id });
-    if (t) { t.done = false; save(); renderAll(); toast('已撤销') }
+    if (!t) return;
+    var vd = todoViewDate;
+    if (t.isRepeat && t.repeatDates) {
+      t.doneBy = t.doneBy || {};
+      delete t.doneBy[vd];
+    } else {
+      t.done = false
+    }
+    save(); renderAll(); toast('已撤销')
   }
   function moveTodo(id) { const t = state.todos.find(x => x.id === id); if (t) t.date = today(); save(); renderAll(); toast('已顺延') }
   function delTodo(id) {
@@ -921,38 +952,122 @@
     });
   }
   let editingTodoId = null;
+  let todoRepeatDates = []; // 添加/编辑循环待办时临时选中的日期数组
   function editTodo(id) {
     editingTodoId = id;
     var t = state.todos.find(function (x) { return x.id === id });
     if (!t) return;
+    var isRepeat = !!(t.isRepeat && t.repeatDates && t.repeatDates.length);
+    todoRepeatDates = isRepeat ? t.repeatDates.slice() : [];
+    var dateRow = isRepeat ? '' :
+      '<div class="form-group"><label>日期</label><input class="inp" type="date" id="todoDate" value="' + t.date + '"></div>';
     openModal({
       title: '编辑待办',
-      body: '<div class="form-group"><label>日期</label><input class="inp" type="date" id="todoDate" value="' + t.date + '"></div>' +
+      body: dateRow +
         '<div class="form-group"><label>类型</label>' +
         '<div class="chip-group" id="todoTypes">' +
         TODO_TYPES.map(function (tt) { return '<div class="chip' + (tt.id === t.type ? ' active' : '') + '" data-type="' + tt.id + '">' + tt.label + '</div>' }).join('') +
         '</div></div>' +
+        (isRepeat ?
+          '<div class="form-group"><label style="cursor:pointer" onclick="toggleRepeatCal()">' +
+          '<span style="display:inline-block;width:14px">📅</span> 循环安排 ' +
+          '<span style="font-weight:400;color:var(--ink-light);font-size:11px" id="repeatSummary"></span>' +
+          '<span style="float:right;color:var(--ink-light)" id="repeatChevron">▴</span></label>' +
+          '<div id="repeatCalWrap" style="display:;margin-top:10px">' +
+          '<div id="repeatCal"></div>' +
+          '<div style="text-align:center;color:var(--ink-light);font-size:11px;margin-top:6px">— 最多可安排从今日起 30 天的任务 —</div>' +
+          '</div></div>' : '') +
         '<div class="form-group"><label>内容</label><input class="inp" id="todoText" value="' + esc(t.text) + '"></div>',
       foot: '<button class="btn ghost" onclick="closeModal()">取消</button><button class="btn" onclick="saveTodo()">保存</button>'
     });
     setTimeout(function () {
       var tt = document.getElementById('todoTypes'); if (tt) tt.querySelectorAll('.chip').forEach(function (c) { c.onclick = function () { tt.querySelectorAll('.chip').forEach(function (x) { x.classList.remove('active') }); c.classList.add('active') } });
+      if (isRepeat) { renderRepeatCal(); updateRepeatSummary(); }
     }, 50);
   }
   function openTodoModal() {
     editingTodoId = null;
+    todoRepeatDates = []; // 重置循环日期选择
     openModal({
       title: '添加待办 · ' + todoViewDate,
       body: '<div class="form-group"><label>类型</label>' +
         '<div class="chip-group" id="todoTypes">' +
         TODO_TYPES.map(function (t) { return '<div class="chip" data-type="' + t.id + '">' + t.label + '</div>' }).join('') +
         '</div></div>' +
-        '<div class="form-group"><label>内容</label><input class="inp" id="todoText" placeholder="比如：整理本周笔记"></div>',
+        '<div class="form-group"><label style="cursor:pointer" onclick="toggleRepeatCal()">' +
+        '<span id="repeatToggleIcon" style="display:inline-block;width:14px">📅</span> 循环安排 ' +
+        '<span style="font-weight:400;color:var(--ink-light);font-size:11px" id="repeatSummary">不选 = 仅当天</span>' +
+        '<span style="float:right;color:var(--ink-light)" id="repeatChevron">▾</span></label>' +
+        '<div id="repeatCalWrap" style="display:none;margin-top:10px">' +
+        '<div id="repeatCal"></div>' +
+        '<div style="text-align:center;color:var(--ink-light);font-size:11px;margin-top:6px">— 最多可安排从今日起 30 天的任务 —</div>' +
+        '</div></div>' +
+        '<div class="form-group"><label>内容</label><input class="inp" id="todoText" placeholder="比如：晨跑 3km"></div>',
       foot: '<button class="btn ghost" onclick="closeModal()">取消</button><button class="btn" onclick="saveTodo()">添加</button>'
     });
     setTimeout(function () {
       var tt = document.getElementById('todoTypes'); if (tt) tt.querySelectorAll('.chip').forEach(function (c) { c.onclick = function () { tt.querySelectorAll('.chip').forEach(function (x) { x.classList.remove('active') }); c.classList.add('active') } });
     }, 50);
+  }
+  // 循环日历：展开/收起
+  function toggleRepeatCal() {
+    var wrap = document.getElementById('repeatCalWrap');
+    if (!wrap) return;
+    if (wrap.style.display === 'none') {
+      wrap.style.display = '';
+      renderRepeatCal();
+      document.getElementById('repeatChevron').textContent = '▴';
+    } else {
+      wrap.style.display = 'none';
+      document.getElementById('repeatChevron').textContent = '▾';
+    }
+  }
+  // 渲染循环日期选择器（今天起 30 天，月历点选）
+  function renderRepeatCal() {
+    var el = document.getElementById('repeatCal');
+    if (!el) return;
+    var WK = ['日', '一', '二', '三', '四', '五', '六'];
+    var todayStr = today();
+    var start = new Date(todayStr + 'T00:00:00+08:00');
+    var max = new Date(start.getTime() + 30 * 864e5); // 含今天共 31 天窗口
+    var html = '';
+    html += '<div class="cal-head">' + WK.map(function (w) { return '<span>' + w + '</span>' }).join('') + '</div>';
+    // 从今天所在周的周日开始，到 max 所在周结束
+    var cur = new Date(start);
+    cur.setDate(cur.getDate() - cur.getDay()); // 回退到周日
+    var endDate = new Date(max);
+    endDate.setDate(endDate.getDate() + (6 - endDate.getDay()));
+    while (cur <= endDate) {
+      var dstr = cur.toISOString().slice(0, 10);
+      var inRange = cur >= start && cur <= max;
+      var isToday = dstr === todayStr;
+      var selected = todoRepeatDates.indexOf(dstr) >= 0;
+      var cls = 'cal-cell' + (inRange ? '' : ' out') + (isToday ? ' today' : '') + (selected ? ' selected' : '');
+      var label = isToday ? '今' : String(cur.getDate());
+      html += '<div class="' + cls + '" ' + (inRange ? 'onclick="toggleRepeatDate(\'' + dstr + '\')"' : '') + '>' + label + '</div>';
+      cur.setDate(cur.getDate() + 1);
+    }
+    el.innerHTML = html;
+  }
+  // 切换某天选中
+  function toggleRepeatDate(dstr) {
+    var i = todoRepeatDates.indexOf(dstr);
+    if (i >= 0) todoRepeatDates.splice(i, 1);
+    else todoRepeatDates.push(dstr);
+    todoRepeatDates.sort();
+    renderRepeatCal();
+    updateRepeatSummary();
+  }
+  // 更新摘要文案
+  function updateRepeatSummary() {
+    var sumEl = document.getElementById('repeatSummary');
+    if (!sumEl) return;
+    if (!todoRepeatDates.length) {
+      sumEl.textContent = '不选 = 仅当天';
+    } else {
+      var next = todoRepeatDates.find(function (d) { return d >= today(); });
+      sumEl.textContent = '已选 ' + todoRepeatDates.length + ' 天' + (next ? ' · 下次 ' + next.slice(5).replace('-', '/') : '');
+    }
   }
   function saveTodo() {
     var d = todoViewDate;
@@ -960,15 +1075,44 @@
     if (!txt) return toast('请填写内容');
     var typeEl = document.getElementById('todoTypes');
     var type = typeEl ? typeEl.querySelector('.chip.active').dataset.type : 'life';
+    var isRepeat = todoRepeatDates.length > 0;
     if (editingTodoId) {
       var t = state.todos.find(function (x) { return x.id === editingTodoId });
-      if (t) { t.date = d; t.text = txt; t.type = type }
+      if (t) {
+        t.date = d;
+        t.text = txt;
+        t.type = type;
+        // 编辑时同步循环配置
+        if (isRepeat) {
+          t.isRepeat = true;
+          t.repeatDates = todoRepeatDates.slice();
+          if (!t.doneBy) t.doneBy = {};
+        } else {
+          delete t.isRepeat;
+          delete t.repeatDates;
+          delete t.doneBy;
+        }
+      }
       editingTodoId = null;
       toast('已更新');
     } else {
-      state.todos.push({ id: uid(), date: d, text: txt, type: type, done: false });
+      if (isRepeat) {
+        // 循环待办：存具体日期数组，每天完成态独立记录
+        state.todos.push({
+          id: uid(),
+          text: txt,
+          type: type,
+          isRepeat: true,
+          repeatDates: todoRepeatDates.slice(),
+          doneBy: {},
+          createdDate: today()
+        });
+      } else {
+        state.todos.push({ id: uid(), date: d, text: txt, type: type, done: false });
+      }
       toast('已添加');
     }
+    todoRepeatDates = [];
     todoViewDate = d; save(); closeModal(); renderAll();
   }
   /* 日期导航 */
@@ -1076,6 +1220,18 @@
     // 构建当天标记映射：dateKey -> Set of types
     const dayMarkers = {};
     state.todos.forEach(t => {
+      // 循环待办：按 repeatDates 标记对应日期
+      if (t.isRepeat && t.repeatDates) {
+        t.repeatDates.forEach(function (rd) {
+          var p = rd.split('-');
+          if (parseInt(p[0]) === calYear && parseInt(p[1]) === calMonth && !(t.doneBy && t.doneBy[rd])) {
+            var dk = p[1] + '-' + p[2];
+            if (!dayMarkers[dk]) dayMarkers[dk] = new Set();
+            dayMarkers[dk].add(t.type || 'life');
+          }
+        });
+        return;
+      }
       if (t.done) return;
       const parts = t.date.split('-');
       if (parseInt(parts[0]) === calYear && parseInt(parts[1]) === calMonth) {
@@ -1249,7 +1405,12 @@
     var mmdd = String(calMonth).padStart(2, '0') + '-' + String(d).padStart(2, '0');
 
     var existingEvts = state.events.filter(function (e) { return e.date === mmdd });
-    var existingTodos = state.todos.filter(function (t) { return t.date === fd && !t.done });
+    var existingTodos = state.todos.filter(function (t) {
+      if (t.isRepeat && t.repeatDates) {
+        return t.repeatDates.indexOf(fd) >= 0 && !(t.doneBy && t.doneBy[fd]);
+      }
+      return t.date === fd && !t.done;
+    });
 
     var existHtml = '';
     if (existingEvts.length || existingTodos.length) {
@@ -1684,6 +1845,19 @@
 
 
   /* ===================== 健康页面 ===================== */
+  // BMI = 体重(kg) / 身高(m)²，身高取自注册时填写的 profile.height（cm）
+  function calcBmi(weightKg, heightCm) {
+    if (!weightKg || !heightCm) return null;
+    var h = heightCm / 100;
+    if (h <= 0) return null;
+    return +(weightKg / (h * h)).toFixed(1);
+  }
+  function bmiCategory(b) {
+    if (b < 18.5) return '偏瘦';
+    if (b < 24) return '正常';
+    if (b < 28) return '偏胖';
+    return '肥胖';
+  }
   function renderHealthStats() {
     const w = [...state.weight].sort((a, b) => a.date.localeCompare(b.date));
     const cur = w[w.length - 1];
@@ -1694,10 +1868,13 @@
     const toGo = cur && tgt != null ? +(cur.weight - tgt).toFixed(1) : null;
     const pct = cur && start && tgt != null ? Math.min(100, Math.round(((start.weight - cur.weight) / (start.weight - tgt)) * 100)) : 0;
     const streak = calcStreak();
+    const bmi = calcBmi(cur ? cur.weight : null, getUserProfile().height);
+    const bmiLabel = bmi != null ? ('BMI · ' + bmiCategory(bmi)) : 'BMI';
 
     $('healthStats').innerHTML = `
   <div class="stat-row">
     <div class="stat"><div class="v">${cur ? cur.weight : '—'}</div><div class="l">当前体重 kg</div></div>
+    <div class="stat"><div class="v ${bmi != null ? 'c' : ''}">${bmi != null ? bmi : '—'}</div><div class="l">${bmiLabel}</div></div>
     <div class="stat"><div class="v">${cur && cur.bodyFat != null ? cur.bodyFat + '%' : '—'}</div><div class="l">体脂率</div></div>
     <div class="stat"><div class="v g">${lost > 0 ? '-' + lost : '—'}</div><div class="l">已减重 kg</div></div>
     <div class="stat"><div class="v c">${toGo != null ? (toGo > 0 ? toGo : '🎯') : '—'}</div><div class="l">距目标 kg</div></div>
@@ -2419,15 +2596,27 @@
   /* ===================== 弹窗：体重 ===================== */
   function openWeightModal() {
     const ex = state.weight.find(w => w.date === today());
+    const h = getUserProfile().height;
+    const initBmi = ex ? calcBmi(ex.weight, h) : null;
     openModal({
       title: '记体重',
       body: `<div class="form-group"><label>日期</label><input class="inp" type="date" id="wd" value="${today()}"></div>
     <div class="form-grid">
-      <div class="form-group"><label>体重 (kg)</label><input class="inp" type="number" id="wv" step="0.1" placeholder="比如 61.0" value="${ex ? ex.weight : ''}"></div>
+      <div class="form-group"><label>体重 (kg)</label><input class="inp" type="number" id="wv" step="0.1" placeholder="比如 61.0" value="${ex ? ex.weight : ''}" oninput="calcBmiLive()"></div>
       <div class="form-group"><label>体脂率 (%) <span style="font-weight:400;color:var(--ink-light);font-size:10px">可选</span></label><input class="inp" type="number" id="wbf" step="0.1" placeholder="比如 22.5" value="${ex && ex.bodyFat ? ex.bodyFat : ''}"></div>
-    </div>`,
+    </div>
+    <div class="bmi-hint" id="bmiHint">${h ? (initBmi != null ? ('当前 BMI：<b>' + initBmi + '</b> · ' + bmiCategory(initBmi)) : '输入体重后自动计算 BMI') : '请先在个人资料设置身高'}</div>`,
       foot: '<button class="btn ghost" onclick="closeModal()">取消</button><button class="btn" onclick="saveWeight()">保存</button>'
     });
+  }
+  function calcBmiLive() {
+    var el = $('bmiHint'); if (!el) return;
+    var h = getUserProfile().height;
+    if (!h) { el.textContent = '请先在个人资料设置身高'; return; }
+    var w = parseFloat($('wv').value);
+    var bmi = calcBmi(w, h);
+    if (bmi == null) { el.textContent = '输入体重后自动计算 BMI'; return; }
+    el.innerHTML = '当前 BMI：<b>' + bmi + '</b> · ' + bmiCategory(bmi);
   }
   function saveWeight() {
     const d = $('wd').value, v = parseFloat($('wv').value);
@@ -3819,9 +4008,9 @@
   (async function initApp() {
     var step = '';
     try {
-      // 使用 ?v 参数破坏 Service Worker 缓存
+      // 使用 APP_VERSION 控制缓存有效期（部署时更新版本号即可刷新）
       step = 'fetch data.json';
-      var fetchUrl = 'data.json?v=' + Date.now();
+      var fetchUrl = 'data.json?v=' + APP_VERSION;
       var resp = await fetch(fetchUrl);
       if (!resp.ok) throw new Error('HTTP ' + resp.status + ' (URL: ' + fetchUrl + ')');
       step = 'parse JSON';
