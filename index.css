@@ -2152,6 +2152,15 @@ html.is-native-app .lbl-app {
   overflow-y: auto;
   padding-right: 4px;
 }
+/* 全局主题化滚动条：跟随昼夜（var(--line) 在暗色板中为深色） */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+*::-webkit-scrollbar { width: 8px; height: 8px }
+*::-webkit-scrollbar-thumb { background: var(--line); border-radius: 8px; min-height: 24px }
+*::-webkit-scrollbar-track { background: transparent }
+*::-webkit-scrollbar-thumb:hover { background: var(--ink-lighter) }
 /* 自定义滚动条 */
 .train-list::-webkit-scrollbar { width: 4px; }
 .train-list::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
@@ -5478,15 +5487,12 @@ input[type=range]::-webkit-slider-thumb {
     padding: 8px 18px
   }
 
-  /* 头像选择器移动端 — 一行6个 */
+  /* 头像选择器移动端 — 自适应（沿用主规则，仅微调） */
   .avatar-picker {
-    grid-template-columns: repeat(6, 1fr) !important;
     gap: 6px !important;
   }
   .avatar-option {
-    width: 40px;
-    height: 40px;
-    font-size: 20px;
+    font-size: clamp(16px, 4.6vw, 20px);
   }
 }
 
@@ -5678,6 +5684,7 @@ input[type=range]::-webkit-slider-thumb {
   --ink-light: #707070;
   --ink-lighter: #505050;
   --line: #383840;
+  --input-bg: #333340;
   --danger: #E88888;
   --danger-soft: #3A2828;
   --success: #88C088;
@@ -5716,7 +5723,7 @@ input[type=range]::-webkit-slider-thumb {
   background: rgba(0, 0, 0, 0.7)
 }
 
-[data-theme="dark"] .modal-content {
+[data-theme="dark"] .modal {
   background: var(--card)
 }
 [data-theme="dark"] .modal-hd {
@@ -5802,6 +5809,18 @@ input[type=range]::-webkit-slider-thumb {
 [data-theme="dark"] .cal-day:hover {
   background: #333340
 }
+
+/* 弹窗内日期选择器（重复日期 / 目标日期）暗色补全 */
+[data-theme="dark"] .cal-head span { color: var(--ink-lighter) }
+[data-theme="dark"] .cal-month-label { color: var(--ink-lighter) }
+[data-theme="dark"] .cal-grid, [data-theme="dark"] #repeatCal { background: transparent }
+[data-theme="dark"] .cal-cell { color: var(--ink) }
+[data-theme="dark"] .cal-cell.out { color: var(--ink-lighter) }
+[data-theme="dark"] .cal-cell.today { background: var(--g400); color: #fff }
+[data-theme="dark"] .cal-cell:hover { background: #333340 }
+[data-theme="dark"] .cal-cell.selected { background: #3A6350; color: #fff; border-color: var(--g400) }
+[data-theme="dark"] .cal-cell.selected.today { background: var(--g400); color: #fff }
+[data-theme="dark"] .cal-cell.selected.today::after { background: #fff }
 
 [data-theme="dark"] .goal-card {
   background: var(--card);
@@ -5896,18 +5915,26 @@ input[type=range]::-webkit-slider-thumb {
 }
 [data-theme="dark"] .goal-reward-done { animation: rewardPulseDark 2s ease-in-out infinite }
 
-/* 字体大小 */
-[data-font="s"] {
-  font-size: 13px
-}
+/* 暗色补丁 — 漏覆盖组件（硬编码 #fff 背景 / 缺失变量回退） */
+[data-theme="dark"] .cal-nav { background: var(--input-bg) }
+[data-theme="dark"] .mood-panel { background: var(--card); border-color: var(--line) }
+[data-theme="dark"] .today-cb { background: var(--card) }
+[data-theme="dark"] .today-act-move { background: var(--card) }
+[data-theme="dark"] .train-week-nav button { background: var(--card); color: var(--ink-soft) }
+[data-theme="dark"] .train-rest-toggle { background: var(--card); color: var(--ink-soft) }
+[data-theme="dark"] .period-bar button { background: var(--card); color: var(--ink-soft) }
+[data-theme="dark"] .train-cat-tab.sel { background: var(--card); color: var(--ink) }
+[data-theme="dark"] .ex-dropdown-btn { background: var(--card); color: var(--ink-soft) }
+[data-theme="dark"] .ex-dropdown-panel { background: var(--card); border-color: var(--line) }
+[data-theme="dark"] .train-list-day { background: var(--card); border-color: var(--line) }
+[data-theme="dark"] .chart-actions button { background: var(--card); color: var(--g400); border-color: var(--g300) }
+[data-theme="dark"] .chart-inline-area { background: var(--card); border-color: var(--line) }
 
-[data-font="m"] {
-  font-size: 14px
-}
-
-[data-font="l"] {
-  font-size: 16px
-}
+/* 字体大小：整体等比缩放（绕过正文固定 px 不跟随根字号的问题）
+   zoom 作用于 body，使侧边栏/主内容/弹窗整体随 s/m/l 缩放 */
+html[data-font="s"] body { zoom: 0.9 }
+html[data-font="m"] body { zoom: 1 }
+html[data-font="l"] body { zoom: 1.15 }
 
 /* 强调色 */
 [data-accent="green"] {
@@ -6159,6 +6186,8 @@ input[type=range]::-webkit-slider-thumb {
   padding: 28px 24px;
   width: 90%;
   max-width: 380px;
+  max-height: 90vh;
+  overflow-y: auto;
   box-shadow: var(--shadow-hover);
   text-align: center;
 }
@@ -6211,25 +6240,28 @@ input[type=range]::-webkit-slider-thumb {
   min-height: 18px;
 }
 
-/* 头像选择器 — 一行6个 */
+/* 头像选择器 — 自适应，每行6个，永不溢出边框 */
 .avatar-picker {
   display: grid !important;
   grid-template-columns: repeat(6, 1fr);
-  gap: 8px !important;
-  justify-items: center;
+  gap: clamp(6px, 1.6vw, 10px) !important;
+  justify-items: stretch;
+  width: 100%;
 }
 .avatar-option {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
+  width: 100% !important;
+  aspect-ratio: 1 / 1;
+  height: auto;
   border-radius: 50%;
-  font-size: 24px;
+  font-size: clamp(18px, 5vw, 24px);
   cursor: pointer;
   transition: all .15s;
   border: 3px solid transparent;
   flex-shrink: 0;
+  box-sizing: border-box;
 }
 .avatar-option:hover {
   transform: scale(1.1);
@@ -6243,7 +6275,16 @@ input[type=range]::-webkit-slider-thumb {
 .cloud-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
+  width: auto;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+.cloud-btn svg { flex-shrink: 0; }
+.cloud-btn .cloud-label {
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 600;
 }
 .cloud-btn .avatar-dot {
   width: 20px;

@@ -126,12 +126,15 @@
   function updateSyncUI(connected) {
     var btn = document.getElementById('cloudBtn');
     var dot = document.getElementById('syncDot');
+    var label = btn && btn.querySelector('.cloud-label');
     if (connected) {
       if (btn) { btn.style.background = 'var(--g100)'; btn.style.color = 'var(--g500)'; btn.style.borderColor = 'var(--g300)'; btn.title = '已同步 · 点击手动同步'; }
       if (dot) dot.style.background = 'var(--success)';
+      if (label) label.textContent = '已同步';
     } else {
       if (btn) { btn.style.background = 'var(--g50)'; btn.style.color = 'var(--g400)'; btn.style.borderColor = 'var(--g200)'; btn.title = '离线 · 点击同步'; }
       if (dot) dot.style.background = 'var(--g200)';
+      if (label) label.textContent = '云同步';
     }
   }
 
@@ -2646,9 +2649,18 @@
     el.innerHTML = '当前 BMI：<b>' + bmi + '</b> · ' + bmiCategory(bmi);
   }
   function saveWeight() {
-    const d = $('wd').value, v = parseFloat($('wv').value);
-    if (!d || isNaN(v)) return toast('请填写完整');
-    const bf = $('wbf') ? parseFloat($('wbf').value) || null : null;
+    const d = $('wd').value, vRaw = ($('wv').value || '').trim();
+    if (!d) return toast('请选择日期');
+    // 编辑已有记录时若清空体重 → 删除该记录，避免留下空记录
+    if (!vRaw) {
+      const ex = state.weight.find(w => w.date === d);
+      if (ex) { state.weight = state.weight.filter(w => w.date !== d); save(); closeModal(); renderAll(); toast('已删除该体重记录') }
+      return toast('请输入体重');
+    }
+    const v = parseFloat(vRaw);
+    if (isNaN(v)) return toast('请输入有效体重');
+    const bfRaw = $('wbf') ? ($('wbf').value || '').trim() : '';
+    const bf = bfRaw ? parseFloat(bfRaw) : null;
     const ex = state.weight.find(w => w.date === d);
     if (ex) { ex.weight = v; ex.bodyFat = bf; } else state.weight.push({ id: uid(), date: d, weight: v, bodyFat: bf });
     state.weight.sort((a, b) => a.date.localeCompare(b.date));
@@ -2672,12 +2684,14 @@
   }
   function saveMeasure() {
     const d = $('md').value;
-    const data = { date: d, waist: +$('waist').value || null, hip: +$('hip').value || null, thigh: +$('thigh').value || null, calf: +$('calf').value || null, arm: +$('arm').value || null };
     if (!d) return toast('请选择日期');
+    const w = $('waist').value.trim(), h = $('hip').value.trim(), t = $('thigh').value.trim(), c = $('calf').value.trim(), a = $('arm').value.trim();
+    if (!(w || h || t || c || a)) return toast('请至少填写一项围度');
+    const data = { date: d, waist: w ? +w : null, hip: h ? +h : null, thigh: t ? +t : null, calf: c ? +c : null, arm: a ? +a : null };
     const ex = state.measure.find(m => m.date === d);
     if (ex) Object.assign(ex, data); else state.measure.push({ id: uid(), ...data });
     state.measure.sort((a, b) => a.date.localeCompare(b.date));
-    save(); closeModal(); renderAll(); toast('已记录');
+    save(); closeModal(); renderAll(); toast(ex ? '已更新' : '已记录');
   }
 
   /* ===================== 弹窗：自定义习惯（健康页用） ===================== */
@@ -3486,7 +3500,7 @@
     var total = 0;
     for (var i = 0; i < 7; i++) { var d = new Date(lastMon); d.setDate(d.getDate() + i); var ds = fmtTrainDate(d); state.trainLogs.filter(function (l) { return l.date === ds }).forEach(function (l) { state.trainLogs.push({ id: uid(), date: fmtTrainDate(new Date(trainWeekStart.getTime() + i * 864e5)), text: l.text, done: false }); total++ }) }
     if (!total) return toast('上周没有训练计划');
-    conf('从上周复制 ' + total + ' 项训练到本周？', function () { save(); renderTrainLogs('trainRecords'); toast('已复制 ' + total + ' 项') });
+    conf('从上周复制 ' + total + ' 项训练到本周？', function () { save(); renderTrainLogs('trainRecords'); refreshCheckinIfHealth(); toast('已复制 ' + total + ' 项') });
   }
 
   function renderTrainLogs(containerId) {
@@ -3989,19 +4003,26 @@
     } else {
       state.trainLogs.push(item);
       save(); closeModal();
-      trainWeekStart = getMonday(new Date(d)); renderTrainLogs('trainRecords'); toast('已添加');
+      trainWeekStart = getMonday(new Date(d)); renderTrainLogs('trainRecords'); refreshCheckinIfHealth(); toast('已添加');
     }
   }
 
+  // 训练数据变化后，刷新同页的「累计打卡」计数（修复：先健康后训练不刷新计数）
+  function refreshCheckinIfHealth() {
+    if (curPage === 'health' && healthSubTab !== 'health') {
+      syncTodayCheckin();
+      renderHabits('healthHabits');
+    }
+  }
   function toggleTrain(id) {
     var t = state.trainLogs.find(function (x) { return x.id === id });
-    if (t) { t.done = !t.done; save(); renderTrainLogs('trainRecords'); toast(t.done ? '完成 ✓' : '已撤销') }
+    if (t) { t.done = !t.done; save(); renderTrainLogs('trainRecords'); refreshCheckinIfHealth(); toast(t.done ? '完成 ✓' : '已撤销') }
   }
 
   function delTrain(id) {
     conf('删除这条训练记录？', function () {
       state.trainLogs = state.trainLogs.filter(function (t) { return t.id !== id });
-      save(); renderTrainLogs('trainRecords');
+      save(); renderTrainLogs('trainRecords'); refreshCheckinIfHealth();
     });
   }
 
